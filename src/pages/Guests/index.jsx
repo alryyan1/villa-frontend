@@ -6,11 +6,13 @@ import {
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined } from '@ant-design/icons';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { TextArea } = Input;
 
 export default function Guests() {
+  usePageTitle('Guests');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');

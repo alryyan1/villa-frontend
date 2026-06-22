@@ -4,11 +4,13 @@ import { Card, Table, DatePicker, Button, Typography, Row, Col, Spin, Tag } from
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import dayjs from 'dayjs';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function VillaPerformance() {
+  usePageTitle('Villa Performance');
   const [dates, setDates] = useState([dayjs().startOf('year'), dayjs()]);
 
   const { data, isLoading, refetch } = useQuery({

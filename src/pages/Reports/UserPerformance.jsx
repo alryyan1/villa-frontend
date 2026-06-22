@@ -5,6 +5,7 @@ import { TrophyOutlined, UserOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import dayjs from 'dayjs';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -13,6 +14,7 @@ const rankColors = ['#ffd700', '#c0c0c0', '#cd7f32'];
 const roleLabels = { admin: 'Admin', manager: 'Manager', staff: 'Staff' };
 
 export default function UserPerformance() {
+  usePageTitle('User Performance');
   const [dates, setDates] = useState([dayjs().startOf('month'), dayjs()]);
 
   const { data, isLoading, refetch } = useQuery({

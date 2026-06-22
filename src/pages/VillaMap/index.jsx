@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Drawer, Modal, Form, Select, DatePicker, Input, InputNumber, Button,
@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import client from '../../api/client';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -58,6 +59,7 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }) {
         <div style={{ lineHeight: 1.6 }}>
           <div style={{ fontWeight: 700 }}>{villa?.name ?? `#${number}`}</div>
           <div>Status: {cfg.label}</div>
+          {villa && <div>Contract: {villa.is_managed ? '✓ Managed' : 'No contract'}</div>}
           {villa?.owner?.name && <div>Owner: {villa.owner.name}</div>}
           {villa?.price_per_night > 0 && (
             <div>OMR {Number(villa.price_per_night).toLocaleString()}/night</div>
@@ -92,8 +94,21 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }) {
             : '0 1px 3px rgba(0,0,0,0.08)',
           transition: 'all 0.15s ease',
           flexShrink: 0,
+          position: 'relative',
         }}
       >
+        {villa?.is_managed && (
+          <span style={{
+            position: 'absolute',
+            top: 2,
+            right: 3,
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: '#faad14',
+            boxShadow: '0 0 0 1.5px #fff',
+          }} />
+        )}
         {number}
         {villa && (
           <span style={{
@@ -146,13 +161,17 @@ function RoadDivider() {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function VillaMap() {
+  usePageTitle('Villa Map');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [managedOnly, setManagedOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedVilla, setSelectedVilla] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [availability, setAvailability] = useState(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [form] = Form.useForm();
+  const datePickerRef = useRef(null);
   const qc = useQueryClient();
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -196,27 +215,28 @@ export default function VillaMap() {
   const stats = useMemo(() => {
     const all = villasData || [];
     return {
-      total: all.length,
-      available: all.filter(v => v.status === 'available').length,
-      occupied: all.filter(v => v.status === 'occupied').length,
+      total:       all.length,
+      available:   all.filter(v => v.status === 'available').length,
+      occupied:    all.filter(v => v.status === 'occupied').length,
       maintenance: all.filter(v => v.status === 'maintenance').length,
+      managed:     all.filter(v => v.is_managed).length,
     };
   }, [villasData]);
 
   // ── Current & upcoming bookings (client-side filter) ─────────────────────
-  const today = dayjs().format('YYYY-MM-DD');
+  const today = dayjs().startOf('day');
 
   const currentBooking = useMemo(() =>
     (villaBookings || []).find(b =>
       ['confirmed', 'pending'].includes(b.status) &&
-      b.check_in <= today &&
-      b.check_out >= today,
+      !dayjs(b.check_in).startOf('day').isAfter(today) &&
+      !dayjs(b.check_out).startOf('day').isBefore(today),
     ), [villaBookings, today]);
 
   const upcomingBookings = useMemo(() =>
     (villaBookings || [])
-      .filter(b => ['confirmed', 'pending'].includes(b.status) && b.check_in > today)
-      .sort((a, b) => a.check_in.localeCompare(b.check_in)),
+      .filter(b => ['confirmed', 'pending'].includes(b.status) && dayjs(b.check_in).startOf('day').isAfter(today))
+      .sort((a, b) => dayjs(a.check_in).diff(dayjs(b.check_in))),
     [villaBookings, today]);
 
   // ── Availability check ────────────────────────────────────────────────────
@@ -265,7 +285,8 @@ export default function VillaMap() {
     if (n === null) return <div key="gap" style={{ width: 18 }} />;
     const villa = villaByNumber[n];
     const highlight = !!(searchNum && searchNum === n);
-    const dimmed = statusFilter !== 'all' && villa?.status !== statusFilter;
+    const dimmed = (statusFilter !== 'all' && villa?.status !== statusFilter)
+                || (managedOnly && villa && !villa.is_managed);
     return (
       <VillaTile
         key={n}
@@ -285,7 +306,7 @@ export default function VillaMap() {
 
   useEffect(() => {
     setToolbar(
-      <Space size={12} style={{ width: '100%' }} wrap={false}>
+      <Space size={10} style={{ width: '100%' }} wrap={false}>
         <Input
           placeholder="Search villa…"
           prefix={<SearchOutlined />}
@@ -293,7 +314,7 @@ export default function VillaMap() {
           onChange={e => setSearch(e.target.value)}
           allowClear
           size="small"
-          style={{ width: 160 }}
+          style={{ width: 150 }}
         />
         <Radio.Group
           value={statusFilter}
@@ -303,15 +324,27 @@ export default function VillaMap() {
         >
           <Radio.Button value="all">All ({stats.total})</Radio.Button>
           <Radio.Button value="available" style={statusFilter !== 'available' ? { color: '#52c41a' } : {}}>
-            Available ({stats.available})
+            Avail ({stats.available})
           </Radio.Button>
           <Radio.Button value="occupied" style={statusFilter !== 'occupied' ? { color: '#fa8c16' } : {}}>
-            Occupied ({stats.occupied})
+            Occ ({stats.occupied})
           </Radio.Button>
           <Radio.Button value="maintenance" style={statusFilter !== 'maintenance' ? { color: '#ff4d4f' } : {}}>
-            Maintenance ({stats.maintenance})
+            Maint ({stats.maintenance})
           </Radio.Button>
         </Radio.Group>
+        <Button
+          size="small"
+          type={managedOnly ? 'primary' : 'default'}
+          onClick={() => setManagedOnly(v => !v)}
+          style={managedOnly ? {} : { color: '#faad14', borderColor: '#faad14' }}
+        >
+          <span style={{
+            display: 'inline-block', width: 8, height: 8,
+            borderRadius: '50%', background: '#faad14', marginRight: 5,
+          }} />
+          Contract ({stats.managed})
+        </Button>
         <Button
           size="small"
           icon={<ReloadOutlined spin={isFetching} />}
@@ -320,7 +353,7 @@ export default function VillaMap() {
       </Space>
     );
     return () => clearToolbar();
-  }, [search, statusFilter, stats, isFetching]);
+  }, [search, statusFilter, managedOnly, stats, isFetching]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -465,7 +498,7 @@ export default function VillaMap() {
         }
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); }}
-        width={480}
+        width={690}
         styles={{ body: { paddingBottom: 80 } }}
         footer={
           <Space>
@@ -491,8 +524,14 @@ export default function VillaMap() {
               <Descriptions.Item label="Villa" span={2}>{selectedVilla.name}</Descriptions.Item>
               <Descriptions.Item label="Owner">{selectedVilla.owner?.name ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="Category">{selectedVilla.category ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Price / Night" span={2}>
+              <Descriptions.Item label="Price / Night">
                 <Text strong>OMR {Number(selectedVilla.price_per_night).toLocaleString()}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Contract">
+                {selectedVilla.is_managed
+                  ? <Tag color="gold">✓ Managed</Tag>
+                  : <Tag color="default">No contract</Tag>
+                }
               </Descriptions.Item>
               {selectedVilla.notes && (
                 <Descriptions.Item label="Notes" span={2}>{selectedVilla.notes}</Descriptions.Item>
@@ -584,7 +623,7 @@ export default function VillaMap() {
                   { title: 'Guest', dataIndex: ['guest', 'name'], ellipsis: true },
                   { title: 'Check-in', dataIndex: 'check_in', render: d => dayjs(d).format('DD MMM YY') },
                   { title: 'Check-out', dataIndex: 'check_out', render: d => dayjs(d).format('DD MMM YY') },
-                  { title: 'Nights', dataIndex: 'nights', width: 55 },
+                  { title: 'Nights', dataIndex: 'nights', width: 60 },
                   {
                     title: 'Status', dataIndex: 'status', width: 85,
                     render: s => <Tag color={statusColors[s]} style={{ fontSize: 11, padding: '0 4px' }}>{s}</Tag>,
@@ -600,76 +639,78 @@ export default function VillaMap() {
 
       {/* ── New Booking Modal ── */}
       <Modal
-        title={
-          <Space>
-            <PlusOutlined />
-            <span>New Booking — {selectedVilla?.name}</span>
-          </Space>
-        }
+        title={<Space><PlusOutlined /><span>New Booking — {selectedVilla?.name}</span></Space>}
         open={bookingModalOpen}
         onCancel={() => { setBookingModalOpen(false); form.resetFields(); setAvailability(null); }}
         onOk={() => form.submit()}
         confirmLoading={createBooking.isPending}
-        width={520}
+        width={460}
+        centered
         okText="Create Booking"
+        styles={{ body: { paddingTop: 12, paddingBottom: 4 } }}
       >
-        <Form form={form} layout="vertical" onFinish={onBookingFinish} style={{ marginTop: 16 }}>
-          <Form.Item label="Villa">
-            <Input value={selectedVilla?.name} disabled />
+        <Form form={form} layout="vertical" onFinish={onBookingFinish} size="small">
+          <Form.Item name="guest_id" label="Guest" rules={[{ required: true, message: 'Select a guest' }]} style={{ marginBottom: 10 }}>
+            <Select
+              placeholder="Search guest…"
+              showSearch
+              optionFilterProp="children"
+              onChange={() => setTimeout(() => setDatePickerOpen(true), 100)}
+            >
+              {(guests || []).map(g => (
+                <Select.Option key={g.id} value={g.id}>
+                  {g.name}{g.phone ? ` — ${g.phone}` : ''}
+                </Select.Option>
+              ))}
+            </Select>
           </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={14}>
-              <Form.Item name="guest_id" label="Guest" rules={[{ required: true, message: 'Please select a guest' }]}>
-                <Select placeholder="Search guest…" showSearch optionFilterProp="children">
-                  {(guests || []).map(g => (
-                    <Select.Option key={g.id} value={g.id}>
-                      {g.name}{g.phone ? ` — ${g.phone}` : ''}
-                    </Select.Option>
-                  ))}
-                </Select>
+          <Row gutter={10} style={{ marginBottom: 0 }}>
+            <Col span={15}>
+              <Form.Item name="dates" label="Dates" rules={[{ required: true, message: 'Select dates' }]} style={{ marginBottom: 10 }}>
+                <RangePicker
+                  ref={datePickerRef}
+                  style={{ width: '100%' }}
+                  placeholder={['Check-in', 'Check-out']}
+                  open={datePickerOpen}
+                  onOpenChange={setDatePickerOpen}
+                  onChange={checkAvailability}
+                />
               </Form.Item>
             </Col>
-            <Col span={10}>
-              <Form.Item name="num_guests" label="No. of Guests" rules={[{ required: true }]} initialValue={1}>
-                <InputNumber min={1} max={50} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="check_in_time" label="Check-in Time">
-                <Select placeholder="Select time" allowClear>
+            <Col span={9}>
+              <Form.Item name="check_in_time" label="Check-in Time" style={{ marginBottom: 10 }}>
+                <Select placeholder="Time" allowClear>
                   <Select.Option value="10:00">10:00 AM</Select.Option>
                   <Select.Option value="11:00">11:00 AM</Select.Option>
                   <Select.Option value="12:00">12:00 PM</Select.Option>
                   <Select.Option value="13:00">01:00 PM</Select.Option>
-                  <Select.Option value="14:00">02:00 PM (Latest)</Select.Option>
+                  <Select.Option value="14:00">02:00 PM</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item
-            name="dates"
-            label="Check-in / Check-out"
-            rules={[{ required: true, message: 'Please select dates' }]}
-          >
-            <RangePicker style={{ width: '100%' }} placeholder={['Check-in', 'Check-out']} onChange={checkAvailability} />
-          </Form.Item>
+          {availability === true && <Alert message="Available ✓" type="success" showIcon style={{ marginBottom: 10, padding: '4px 10px' }} />}
+          {availability === false && <Alert message="Already booked for these dates — pick different dates." type="error" showIcon style={{ marginBottom: 10, padding: '4px 10px' }} />}
 
-          {availability === true && <Alert message="Villa is available for the selected dates ✓" type="success" showIcon style={{ marginBottom: 12 }} />}
-          {availability === false && <Alert message="Villa is already booked for this period — choose different dates." type="error" showIcon style={{ marginBottom: 12 }} />}
+          <Row gutter={10}>
+            <Col span={9}>
+              <Form.Item name="num_guests" label="Guests" rules={[{ required: true }]} initialValue={1} style={{ marginBottom: 10 }}>
+                <InputNumber min={1} max={50} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={15}>
+              <Form.Item name="status" label="Status" initialValue="confirmed" style={{ marginBottom: 10 }}>
+                <Select>
+                  <Select.Option value="confirmed">Confirmed</Select.Option>
+                  <Select.Option value="pending">Pending</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Form.Item name="status" label="Status" initialValue="confirmed">
-            <Select>
-              <Select.Option value="confirmed">Confirmed</Select.Option>
-              <Select.Option value="pending">Pending</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item name="notes" label="Notes">
+          <Form.Item name="notes" label="Notes" style={{ marginBottom: 4 }}>
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>

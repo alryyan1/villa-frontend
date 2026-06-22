@@ -4,12 +4,14 @@ import { Card, Table, DatePicker, Button, Typography, Select, Row, Col, Statisti
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import dayjs from 'dayjs';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 export default function RevenueReport() {
+  usePageTitle('Revenue Report');
   const [dates, setDates]     = useState([dayjs().startOf('year'), dayjs()]);
   const [groupBy, setGroupBy] = useState('month');
 

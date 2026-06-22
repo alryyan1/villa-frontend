@@ -6,15 +6,18 @@ import {
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined } from '@ant-design/icons';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { TextArea } = Input;
 
 export default function Owners() {
+  usePageTitle('Owners');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
   const [importOpen, setImportOpen] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [form] = Form.useForm();
@@ -22,8 +25,8 @@ export default function Owners() {
   const { message } = App.useApp();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owners', search, page],
-    queryFn: () => client.get('/owners', { params: { search, page } }).then(r => r.data),
+    queryKey: ['owners', search, page, perPage],
+    queryFn: () => client.get('/owners', { params: { search, page, per_page: perPage } }).then(r => r.data),
   });
 
   const save = useMutation({
@@ -140,10 +143,12 @@ export default function Owners() {
           pagination={{
             current: page,
             total: data?.total,
-            pageSize: data?.per_page ?? 20,
-            showSizeChanger: false,
+            pageSize: perPage,
+            pageSizeOptions: [10, 20, 50, 100],
+            showSizeChanger: true,
             showTotal: (total) => `Total ${total} owners`,
-            onChange: (p) => setPage(p),
+            onChange: (p, size) => { setPage(p); setPerPage(size); },
+            onShowSizeChange: (_, size) => { setPage(1); setPerPage(size); },
           }}
           scroll={{ x: 700 }}
         />

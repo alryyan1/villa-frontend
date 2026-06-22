@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Select, InputNumber,
-  Tag, Space, Typography, Popconfirm, Card, Row, Col, App,
+  Table, Button, Modal, Form, Input, Select, InputNumber, Switch, Segmented,
+  Tag, Space, Typography, Popconfirm, Card, Row, Col, App, Tooltip,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, HomeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, HomeOutlined, CheckCircleFilled } from '@ant-design/icons';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -25,17 +26,26 @@ const VILLA_TYPES = [
 const categoryColor = Object.fromEntries(VILLA_TYPES.map(t => [t.value, t.color]));
 
 export default function Villas() {
+  usePageTitle('Villas');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [managedFilter, setManagedFilter] = useState('all');
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
 
+  const managedParam = managedFilter === 'managed' ? 1 : managedFilter === 'unmanaged' ? 0 : undefined;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['villas', search, page],
-    queryFn: () => client.get('/villas', { params: { search, page } }).then(r => r.data),
+    queryKey: ['villas', search, page, managedFilter],
+    queryFn: () => client.get('/villas', { params: { search, page, is_managed: managedParam } }).then(r => r.data),
+  });
+
+  const { data: villaStats } = useQuery({
+    queryKey: ['villas-stats'],
+    queryFn: () => client.get('/villas/stats').then(r => r.data),
   });
 
   const { data: owners } = useQuery({
@@ -50,6 +60,7 @@ export default function Villas() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['villas'] });
       qc.invalidateQueries({ queryKey: ['villas-map'] });
+      qc.invalidateQueries({ queryKey: ['villas-stats'] });
       message.success(editing ? 'Villa updated.' : 'Villa added.');
       setModalOpen(false);
       form.resetFields();
@@ -60,7 +71,7 @@ export default function Villas() {
 
   const remove = useMutation({
     mutationFn: (id) => client.delete(`/villas/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['villas'] }); message.success('Villa deleted.'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['villas'] }); qc.invalidateQueries({ queryKey: ['villas-stats'] }); message.success('Villa deleted.'); },
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
 
@@ -71,12 +82,18 @@ export default function Villas() {
 
   const openEdit = (record) => {
     setEditing(record);
-    form.setFieldsValue({ ...record, owner_id: record.owner?.id });
+    form.setFieldsValue({ ...record, owner_id: record.owner?.id, is_managed: record.is_managed ?? false });
     setModalOpen(true);
   };
 
   const columns = [
     { title: '#', dataIndex: 'id', width: 60 },
+    {
+      title: 'Contract', dataIndex: 'is_managed', width: 80, align: 'center',
+      render: v => v
+        ? <Tooltip title="Managed contract"><CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /></Tooltip>
+        : <span style={{ color: '#d9d9d9', fontSize: 18 }}>—</span>,
+    },
     { title: 'Villa Name', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
     {
       title: 'Type', dataIndex: 'category',
@@ -112,13 +129,28 @@ export default function Villas() {
       </Row>
 
       <Card>
-        <Input.Search
-          placeholder="Search by name..."
-          onSearch={v => { setSearch(v); setPage(1); }}
-          onChange={e => { if (!e.target.value) { setSearch(''); setPage(1); } }}
-          style={{ marginBottom: 16, maxWidth: 300 }}
-          allowClear
-        />
+        <Row gutter={12} style={{ marginBottom: 16 }} align="middle">
+          <Col>
+            <Input.Search
+              placeholder="Search by name..."
+              onSearch={v => { setSearch(v); setPage(1); }}
+              onChange={e => { if (!e.target.value) { setSearch(''); setPage(1); } }}
+              style={{ width: 280 }}
+              allowClear
+            />
+          </Col>
+          <Col>
+            <Segmented
+              value={managedFilter}
+              onChange={v => { setManagedFilter(v); setPage(1); }}
+              options={[
+                { label: `All Villas${villaStats ? ` (${villaStats.total})` : ''}`, value: 'all' },
+                { label: `✓ With Contract${villaStats ? ` (${villaStats.managed})` : ''}`, value: 'managed' },
+                { label: `No Contract${villaStats ? ` (${villaStats.unmanaged})` : ''}`, value: 'unmanaged' },
+              ]}
+            />
+          </Col>
+        </Row>
         <Table
           dataSource={data?.data}
           columns={columns}
@@ -182,13 +214,22 @@ export default function Villas() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="status" label="Status" initialValue="available">
-            <Select>
-              <Option value="available">Available</Option>
-              <Option value="occupied">Occupied</Option>
-              <Option value="maintenance">Maintenance</Option>
-            </Select>
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="status" label="Status" initialValue="available">
+                <Select>
+                  <Option value="available">Available</Option>
+                  <Option value="occupied">Occupied</Option>
+                  <Option value="maintenance">Maintenance</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="is_managed" label="Management Contract" valuePropName="checked" initialValue={false}>
+                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item name="description" label="Description">
             <TextArea rows={2} />
           </Form.Item>

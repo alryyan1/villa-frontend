@@ -4,6 +4,7 @@ import { HomeOutlined, CalendarOutlined, DollarOutlined, RiseOutlined } from '@a
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import client from '../../api/client';
 import dayjs from 'dayjs';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title, Text } = Typography;
 
@@ -11,6 +12,7 @@ const statusColors = { confirmed: 'green', pending: 'orange', cancelled: 'red', 
 const statusLabels = { confirmed: 'Confirmed', pending: 'Pending', cancelled: 'Cancelled', completed: 'Completed' };
 
 export default function Dashboard() {
+  usePageTitle('Dashboard');
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => client.get('/dashboard/stats').then(r => r.data),
@@ -41,7 +43,11 @@ export default function Dashboard() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic title="Total Villas" value={data?.total_villas} prefix={<HomeOutlined />} valueStyle={{ color: '#1677ff' }} />
-            <Text type="secondary">Available: {data?.available_villas} | Occupied: {data?.occupied_villas}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text style={{ color: '#52c41a', fontWeight: 600 }}>✓ Managed: {data?.managed_villas}</Text>
+              <Text type="secondary"> · No contract: {data?.unmanaged_villas}</Text>
+            </div>
+            <Text type="secondary" style={{ fontSize: 12 }}>Available: {data?.available_villas} | Occupied: {data?.occupied_villas}</Text>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
@@ -7,11 +7,12 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
-  DollarOutlined, UnorderedListOutlined,
+  DollarOutlined, UnorderedListOutlined, LoginOutlined, LogoutOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import client from '../../api/client';
 import BookingCalendar from './CalendarView';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -30,26 +31,35 @@ const methodOptions = [
 ];
 
 export default function Bookings() {
+  usePageTitle('Bookings');
   const [modalOpen, setModalOpen]       = useState(false);
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [detailOpen, setDetailOpen]     = useState(false);
+  const [actionRow, setActionRow]       = useState(null);
   const [editing, setEditing]           = useState(null);
   const [selected, setSelected]         = useState(null);
   const [availability, setAvailability] = useState(null);
   const [selectedVillaRooms, setSelectedVillaRooms] = useState(null);
+  const [filterGuest, setFilterGuest]   = useState(null);
+  const [filterVilla, setFilterVilla]   = useState(null);
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['bookings'],
-    queryFn: () => client.get('/bookings').then(r => r.data),
+    queryKey: ['bookings', filterGuest, filterVilla],
+    queryFn: () => client.get('/bookings', {
+      params: {
+        ...(filterGuest ? { guest_id: filterGuest } : {}),
+        ...(filterVilla ? { villa_id: filterVilla } : {}),
+      },
+    }).then(r => r.data),
   });
 
   const { data: villas } = useQuery({
     queryKey: ['villas-all'],
-    queryFn: () => client.get('/villas', { params: { per_page: 200 } }).then(r => r.data.data),
+    queryFn: () => client.get('/villas', { params: { per_page: 200, is_managed: 1 } }).then(r => r.data.data),
   });
 
   const { data: guests } = useQuery({
@@ -86,6 +96,18 @@ export default function Bookings() {
       payForm.resetFields();
       setPayModalOpen(false);
     },
+    onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
+  });
+
+  const confirmArrival = useMutation({
+    mutationFn: (id) => client.post(`/bookings/${id}/confirm-arrival`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bookings'] }); message.success('Check-in confirmed.'); setActionRow(null); },
+    onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
+  });
+
+  const confirmDeparture = useMutation({
+    mutationFn: (id) => client.post(`/bookings/${id}/confirm-departure`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bookings'] }); message.success('Check-out confirmed.'); setActionRow(null); },
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
 
@@ -172,29 +194,39 @@ export default function Bookings() {
         return <span style={{ color: rem > 0 ? '#fa8c16' : '#52c41a', fontWeight: 600 }}>{rem.toLocaleString()} OMR</span>;
       },
     },
-    {
-      title: 'Payment',
-      dataIndex: 'payment_status',
-      render: s => <Tag color={payColors[s]}>{payLabels[s]}</Tag>,
-    },
+   
     {
       title: 'Status',
       dataIndex: 'status',
       render: s => <Tag color={statusColors[s]}>{statusLabels[s]}</Tag>,
     },
-    { title: 'Created By', dataIndex: ['user', 'name'] },
     {
-      title: 'Actions', key: 'actions', fixed: 'left', render: (_, r) => (
-        <Space>
-          <Button size="small" onClick={() => { setSelected(r); setDetailOpen(true); }}>View</Button>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Button size="small" icon={<DollarOutlined />} onClick={() => { setSelected(r); setPayModalOpen(true); }} />
-          <Popconfirm title="Delete this booking?" onConfirm={() => remove.mutate(r.id)} okText="Yes" cancelText="No">
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      title: 'Countdown', key: 'countdown', width: 150,
+      render: (_, r) => {
+        if (['cancelled', 'completed'].includes(r.status)) return null;
+        const today = dayjs().startOf('day');
+        const checkIn  = dayjs(r.check_in).startOf('day');
+        const checkOut = dayjs(r.check_out).startOf('day');
+        if (today.isBefore(checkIn)) {
+          const days = checkIn.diff(today, 'day');
+          return (
+            <Tag color="blue" style={{ whiteSpace: 'normal', lineHeight: 1.4 }}>
+              {days === 0 ? 'Arriving today' : `${days}d to arrival`}
+            </Tag>
+          );
+        }
+        if (!today.isAfter(checkOut)) {
+          const days = checkOut.diff(today, 'day');
+          return (
+            <Tag color="orange" style={{ whiteSpace: 'normal', lineHeight: 1.4 }}>
+              {days === 0 ? 'Departing today' : `${days}d to departure`}
+            </Tag>
+          );
+        }
+        return null;
+      },
     },
+    { title: 'Created By', dataIndex: ['user', 'name'] },
   ];
 
   return (
@@ -211,14 +243,48 @@ export default function Bookings() {
           key: 'list', label: <><UnorderedListOutlined /> List</>,
           children: (
             <Card>
+              <Row gutter={12} style={{ marginBottom: 12 }}>
+                <Col xs={24} sm={10} md={8}>
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="children"
+                    placeholder="Filter by guest…"
+                    style={{ width: '100%' }}
+                    value={filterGuest}
+                    onChange={setFilterGuest}
+                  >
+                    {guests?.map(g => <Option key={g.id} value={g.id}>{g.name}{g.phone ? ` — ${g.phone}` : ''}</Option>)}
+                  </Select>
+                </Col>
+                <Col xs={24} sm={10} md={8}>
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="children"
+                    placeholder="Filter by villa…"
+                    style={{ width: '100%' }}
+                    value={filterVilla}
+                    onChange={setFilterVilla}
+                  >
+                    {villas?.map(v => <Option key={v.id} value={v.id}>{v.name}</Option>)}
+                  </Select>
+                </Col>
+                {(filterGuest || filterVilla) && (
+                  <Col>
+                    <Button onClick={() => { setFilterGuest(null); setFilterVilla(null); }}>Clear</Button>
+                  </Col>
+                )}
+              </Row>
               <Table
                 dataSource={data?.data}
                 columns={columns}
                 rowKey="id"
                 loading={isLoading}
                 pagination={{ total: data?.total, pageSize: 20 }}
-                scroll={{ x: 1100 }}
+                scroll={{ x: 900 }}
                 size="small"
+                onRow={r => ({ onClick: () => setActionRow(r), style: { cursor: 'pointer' } })}
               />
             </Card>
           ),
@@ -228,6 +294,77 @@ export default function Bookings() {
           children: <BookingCalendar bookings={data?.data || []} />,
         },
       ]} />
+
+      {/* Row Action Picker */}
+      <Modal
+        open={!!actionRow}
+        onCancel={() => setActionRow(null)}
+        footer={null}
+        width={340}
+        centered
+        title={actionRow ? `Booking #${actionRow.id} — ${actionRow.villa?.name}` : ''}
+        styles={{ body: { padding: '16px 24px 20px' } }}
+      >
+        {actionRow && (
+          <>
+            <div style={{ marginBottom: 16, color: '#595959', fontSize: 13 }}>
+              <span>{actionRow.guest?.name}</span>
+              <span style={{ margin: '0 8px', color: '#d9d9d9' }}>·</span>
+              <span>{dayjs(actionRow.check_in).format('DD MMM')} → {dayjs(actionRow.check_out).format('DD MMM YYYY')}</span>
+            </div>
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <Button block icon={<CalendarOutlined />} onClick={() => { setSelected(actionRow); setDetailOpen(true); setActionRow(null); }}>
+                View Details
+              </Button>
+              <Button block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
+                Edit Booking
+              </Button>
+              <Button block icon={<DollarOutlined />} onClick={() => { setSelected(actionRow); setPayModalOpen(true); setActionRow(null); }}>
+                Add Payment
+              </Button>
+              {!actionRow?.checked_in_at && !['cancelled', 'completed'].includes(actionRow?.status) && (
+                <Popconfirm
+                  title="Confirm guest check-in?"
+                  onConfirm={() => confirmArrival.mutate(actionRow.id)}
+                  okText="Yes"
+                  cancelText="No"
+                  disabled={dayjs().startOf('day').isBefore(dayjs(actionRow?.check_in).startOf('day'))}
+                >
+                  <Button
+                    block
+                    icon={<LoginOutlined />}
+                    disabled={dayjs().startOf('day').isBefore(dayjs(actionRow?.check_in).startOf('day'))}
+                    style={{ background: '#f6ffed', borderColor: '#52c41a', color: '#389e0d' }}
+                  >
+                    Confirm Check-in
+                  </Button>
+                </Popconfirm>
+              )}
+              {actionRow?.checked_in_at && !actionRow?.checked_out_at && (
+                <Popconfirm
+                  title="Confirm guest check-out?"
+                  onConfirm={() => confirmDeparture.mutate(actionRow.id)}
+                  okText="Yes"
+                  cancelText="No"
+                >
+                  <Button block icon={<LogoutOutlined />} style={{ background: '#fff7e6', borderColor: '#fa8c16', color: '#d46b08' }}>
+                    Confirm Check-out
+                  </Button>
+                </Popconfirm>
+              )}
+              <Popconfirm
+                title="Delete this booking?"
+                onConfirm={() => { remove.mutate(actionRow.id); setActionRow(null); }}
+                okText="Delete"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+              >
+                <Button block danger icon={<DeleteOutlined />}>Delete Booking</Button>
+              </Popconfirm>
+            </Space>
+          </>
+        )}
+      </Modal>
 
       {/* Booking Form Modal */}
       <Modal
@@ -397,7 +534,7 @@ export default function Bookings() {
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
         footer={null}
-        width={620}
+        width={720}
       >
         {bookingDetail && (
           <>
@@ -433,8 +570,9 @@ export default function Bookings() {
                   pagination={false}
                   columns={[
                     { title: 'Amount', dataIndex: 'amount', render: v => `${Number(v).toLocaleString()} OMR` },
-                    { title: 'Date', dataIndex: 'payment_date' },
+                    { title: 'Date', dataIndex: 'payment_date', render: d => dayjs(d).format('YYYY-MM-DD') },
                     { title: 'Method', dataIndex: 'method', render: m => methodLabels[m] ?? m },
+                    { title: 'Recorded By', dataIndex: ['user', 'name'], render: v => v || '—' },
                     { title: 'Notes', dataIndex: 'notes', render: v => v || '—' },
                   ]}
                 />

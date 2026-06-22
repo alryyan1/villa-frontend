@@ -4,11 +4,13 @@ import { Table, Card, Typography, Row, Col, DatePicker, Input, Button, Tag } fro
 import { FileTextOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function ActivityLogs() {
+  usePageTitle('Activity Log');
   const [dates, setDates]   = useState(null);
   const [search, setSearch] = useState('');
 

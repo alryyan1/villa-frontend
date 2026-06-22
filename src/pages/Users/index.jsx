@@ -7,6 +7,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
 import client from '../../api/client';
 import { useAuth } from '../../store/AuthContext';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -15,6 +16,7 @@ const roleColors = { admin: 'red', manager: 'orange', staff: 'blue' };
 const roleLabels = { admin: 'Admin', manager: 'Manager', staff: 'Staff' };
 
 export default function Users() {
+  usePageTitle('Users');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing]     = useState(null);
   const [form] = Form.useForm();

@@ -4,11 +4,13 @@ import { Card, Table, DatePicker, Button, Typography, Progress, Row, Col, Statis
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import dayjs from 'dayjs';
 import client from '../../api/client';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function OccupancyReport() {
+  usePageTitle('Occupancy Report');
   const [dates, setDates] = useState([dayjs().startOf('month'), dayjs().endOf('month')]);
 
   const { data, isLoading, refetch } = useQuery({
