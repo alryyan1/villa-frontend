@@ -4,6 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Typography, Popconfirm, Card, Row, Col, App,
   Tabs, Alert, Descriptions, InputNumber, Divider,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
@@ -13,6 +14,7 @@ import dayjs from 'dayjs';
 import client from '../../api/client';
 import BookingCalendar from './CalendarView';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -46,6 +48,19 @@ export default function Bookings() {
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
+  const { setToolbar, clearToolbar } = useHeaderToolbar();
+
+  useEffect(() => {
+    setToolbar(
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <Space><CalendarOutlined /><span style={{ fontWeight: 600 }}>Booking Management</span></Space>
+        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAvailability(null); setModalOpen(true); }}>
+          New Booking
+        </Button>
+      </div>
+    );
+    return () => clearToolbar();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading } = useQuery({
     queryKey: ['bookings', filterGuest, filterVilla],
@@ -59,7 +74,7 @@ export default function Bookings() {
 
   const { data: villas } = useQuery({
     queryKey: ['villas-all'],
-    queryFn: () => client.get('/villas', { params: { per_page: 200, is_managed: 1 } }).then(r => r.data.data),
+    queryFn: () => client.get('/villas', { params: { per_page: 200, contract_active: 1 } }).then(r => r.data.data),
   });
 
   const { data: guests } = useQuery({
@@ -176,16 +191,39 @@ export default function Bookings() {
     : 0;
 
   const columns = [
-    { title: '#', dataIndex: 'id', width: 60 },
-    { title: 'Villa', dataIndex: ['villa', 'name'] },
+    { title: '#', dataIndex: 'id', width: 50 },
+    { title: 'Villa', dataIndex: ['villa', 'name'], width: 110 },
     { title: 'Guest', dataIndex: ['guest', 'name'] },
-    { title: 'Guests', dataIndex: 'num_guests', width: 70, render: v => v ?? 1 },
     {
-      title: 'Check In', dataIndex: 'check_in',
-      render: (d, r) => `${dayjs(d).format('YYYY-MM-DD')}${r.check_in_time ? ' ' + r.check_in_time : ''}`,
+      title: 'Stay', key: 'stay', width: 150,
+      render: (_, r) => (
+        <div style={{ lineHeight: 1.4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {dayjs(r.check_in).format('DD MMM')} → {dayjs(r.check_out).format('DD MMM')}
+          </div>
+          <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+            {r.check_in_time ? `${r.check_in_time} · ` : ''}{r.nights}n · {r.num_guests ?? 1} guest{(r.num_guests ?? 1) > 1 ? 's' : ''}
+          </div>
+        </div>
+      ),
     },
-    { title: 'Check Out', dataIndex: 'check_out', render: d => dayjs(d).format('YYYY-MM-DD') },
-    { title: 'Nights', dataIndex: 'nights', width: 70 },
+    {
+      title: 'In / Out', key: 'inout', width: 100,
+      render: (_, r) => (
+        <Space size={4}>
+          <Tooltip title={r.checked_in_at ? `Checked in: ${dayjs(r.checked_in_at).format('DD MMM HH:mm')}` : 'Not yet checked in'}>
+            <Tag icon={<LoginOutlined />} color={r.checked_in_at ? 'success' : 'default'} style={{ marginRight: 0, fontSize: 11, cursor: 'default' }}>
+              IN
+            </Tag>
+          </Tooltip>
+          <Tooltip title={r.checked_out_at ? `Checked out: ${dayjs(r.checked_out_at).format('DD MMM HH:mm')}` : 'Not yet checked out'}>
+            <Tag icon={<LogoutOutlined />} color={r.checked_out_at ? 'error' : 'default'} style={{ marginRight: 0, fontSize: 11, cursor: 'default' }}>
+              OUT
+            </Tag>
+          </Tooltip>
+        </Space>
+      ),
+    },
     { title: 'Total', dataIndex: 'total_amount', render: v => `${Number(v).toLocaleString()} OMR` },
     {
       title: 'Remaining', key: 'remaining',
@@ -231,13 +269,6 @@ export default function Bookings() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><CalendarOutlined /> Booking Management</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAvailability(null); setModalOpen(true); }}>
-          New Booking
-        </Button>
-      </Row>
-
       <Tabs defaultActiveKey="list" items={[
         {
           key: 'list', label: <><UnorderedListOutlined /> List</>,
@@ -282,7 +313,7 @@ export default function Bookings() {
                 rowKey="id"
                 loading={isLoading}
                 pagination={{ total: data?.total, pageSize: 20 }}
-                scroll={{ x: 900 }}
+                scroll={{ x: 800 }}
                 size="small"
                 onRow={r => ({ onClick: () => setActionRow(r), style: { cursor: 'pointer' } })}
               />
@@ -542,7 +573,15 @@ export default function Bookings() {
               <Descriptions.Item label="Villa">
                 {bookingDetail.villa?.name}{bookingDetail.villa?.num_rooms ? ` · ${bookingDetail.villa.num_rooms} rooms` : ''}
               </Descriptions.Item>
-              <Descriptions.Item label="Guest">{bookingDetail.guest?.name}</Descriptions.Item>
+              <Descriptions.Item label="Guest" span={2}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', lineHeight: 1.8 }}>
+                  <span style={{ fontWeight: 600 }}>{bookingDetail.guest?.name}</span>
+                  {bookingDetail.guest?.phone && <span><Text type="secondary" style={{ fontSize: 12 }}>Phone: </Text>{bookingDetail.guest.phone}</span>}
+                  {bookingDetail.guest?.id_number && <span><Text type="secondary" style={{ fontSize: 12 }}>ID: </Text>{bookingDetail.guest.id_number}</span>}
+                  {bookingDetail.guest?.nationality && <span><Text type="secondary" style={{ fontSize: 12 }}>Nationality: </Text>{bookingDetail.guest.nationality}</span>}
+                  {bookingDetail.guest?.notes && <span style={{ width: '100%' }}><Text type="secondary" style={{ fontSize: 12 }}>Guest notes: </Text>{bookingDetail.guest.notes}</span>}
+                </div>
+              </Descriptions.Item>
               <Descriptions.Item label="Guests (count)">{bookingDetail.num_guests ?? 1}</Descriptions.Item>
               <Descriptions.Item label="Check In">
                 {dayjs(bookingDetail.check_in).format('YYYY-MM-DD')}{bookingDetail.check_in_time ? ` @ ${bookingDetail.check_in_time}` : ''}

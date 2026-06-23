@@ -18,6 +18,7 @@ import PaymentMethodsReport from './pages/Reports/PaymentMethodsReport';
 import Users from './pages/Users';
 import ActivityLogs from './pages/ActivityLogs';
 import VillaMap from './pages/VillaMap';
+import Maintenance from './pages/Maintenance';
 import Settings from './pages/Settings';
 
 const queryClient = new QueryClient({
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="users" element={<Users />} />
         <Route path="activity-logs" element={<ActivityLogs />} />
         <Route path="map" element={<VillaMap />} />
+        <Route path="maintenance" element={<Maintenance />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />

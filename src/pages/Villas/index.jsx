@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Select, InputNumber, Switch, Segmented,
-  Tag, Space, Typography, Popconfirm, Card, Row, Col, App, Tooltip,
+  Table, Button, Modal, Form, Input, Select, InputNumber,
+  Tag, Space, Card, Row, Col, App, Tooltip, DatePicker, Switch,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, HomeOutlined, CheckCircleFilled } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, HomeOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 
-const { Title } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
@@ -30,22 +31,30 @@ export default function Villas() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
+  const [contractActive, setContractActive] = useState(false);
   const [page, setPage] = useState(1);
-  const [managedFilter, setManagedFilter] = useState('all');
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
+  const { setToolbar, clearToolbar } = useHeaderToolbar();
 
-  const managedParam = managedFilter === 'managed' ? 1 : managedFilter === 'unmanaged' ? 0 : undefined;
+  useEffect(() => {
+    setToolbar(
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <Space><HomeOutlined /><span style={{ fontWeight: 600 }}>Villa Management</span></Space>
+        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
+          Add Villa
+        </Button>
+      </div>
+    );
+    return () => clearToolbar();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading } = useQuery({
-    queryKey: ['villas', search, page, managedFilter],
-    queryFn: () => client.get('/villas', { params: { search, page, is_managed: managedParam } }).then(r => r.data),
-  });
-
-  const { data: villaStats } = useQuery({
-    queryKey: ['villas-stats'],
-    queryFn: () => client.get('/villas/stats').then(r => r.data),
+    queryKey: ['villas', search, contractActive, page],
+    queryFn: () => client.get('/villas', {
+      params: { search, page, ...(contractActive && { contract_active: true }) },
+    }).then(r => r.data),
   });
 
   const { data: owners } = useQuery({
@@ -53,14 +62,19 @@ export default function Villas() {
     queryFn: () => client.get('/owners', { params: { per_page: 200 } }).then(r => r.data.data),
   });
 
+  const formatVillaPayload = (vals) => ({
+    ...vals,
+    contract_start_date:  vals.contract_start_date  ? dayjs(vals.contract_start_date).format('YYYY-MM-DD')  : null,
+    contract_end_date:    vals.contract_end_date    ? dayjs(vals.contract_end_date).format('YYYY-MM-DD')    : null,
+  });
+
   const save = useMutation({
     mutationFn: (vals) => editing
-      ? client.put(`/villas/${editing.id}`, vals)
-      : client.post('/villas', vals),
+      ? client.put(`/villas/${editing.id}`, formatVillaPayload(vals))
+      : client.post('/villas', formatVillaPayload(vals)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['villas'] });
       qc.invalidateQueries({ queryKey: ['villas-map'] });
-      qc.invalidateQueries({ queryKey: ['villas-stats'] });
       message.success(editing ? 'Villa updated.' : 'Villa added.');
       setModalOpen(false);
       form.resetFields();
@@ -71,7 +85,7 @@ export default function Villas() {
 
   const remove = useMutation({
     mutationFn: (id) => client.delete(`/villas/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['villas'] }); qc.invalidateQueries({ queryKey: ['villas-stats'] }); message.success('Villa deleted.'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['villas'] }); message.success('Villa deleted.'); },
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
 
@@ -82,19 +96,31 @@ export default function Villas() {
 
   const openEdit = (record) => {
     setEditing(record);
-    form.setFieldsValue({ ...record, owner_id: record.owner?.id, is_managed: record.is_managed ?? false });
+    form.setFieldsValue({
+      ...record,
+      owner_id:             record.owner?.id,
+      contract_start_date:  record.contract_start_date  ? dayjs(record.contract_start_date)  : null,
+      contract_end_date:    record.contract_end_date    ? dayjs(record.contract_end_date)    : null,
+      contract_monthly_value: record.contract_monthly_value ?? null,
+    });
     setModalOpen(true);
   };
 
   const columns = [
     { title: '#', dataIndex: 'id', width: 60 },
+
     {
-      title: 'Contract', dataIndex: 'is_managed', width: 80, align: 'center',
-      render: v => v
-        ? <Tooltip title="Managed contract"><CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} /></Tooltip>
-        : <span style={{ color: '#d9d9d9', fontSize: 18 }}>—</span>,
+      width:180,
+      title: 'Contract Period', key: 'contract_period',
+      render: (_, r) => r.contract_start_date
+        ? `${dayjs(r.contract_start_date).format('DD MMM YY')} → ${dayjs(r.contract_end_date).format('DD MMM YY')}`
+        : '—',
     },
-    { title: 'Villa Name', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
+    {
+      title: 'C.Value', dataIndex: 'contract_monthly_value',
+      render: v => v ? `OMR ${Number(v).toLocaleString()}` : '—',
+    },
+    { title: 'V.Name', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
     {
       title: 'Type', dataIndex: 'category',
       render: v => v
@@ -111,9 +137,7 @@ export default function Villas() {
       title: 'Actions', key: 'actions', render: (_, r) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title="Delete this villa?" onConfirm={() => remove.mutate(r.id)} okText="Yes" cancelText="No">
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+         
         </Space>
       ),
     },
@@ -121,18 +145,11 @@ export default function Villas() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><HomeOutlined /> Villa Management</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
-          Add Villa
-        </Button>
-      </Row>
-
       <Card>
         <Row gutter={12} style={{ marginBottom: 16 }} align="middle">
           <Col>
             <Input.Search
-              placeholder="Search by name..."
+              placeholder="Search by name or owner..."
               onSearch={v => { setSearch(v); setPage(1); }}
               onChange={e => { if (!e.target.value) { setSearch(''); setPage(1); } }}
               style={{ width: 280 }}
@@ -140,18 +157,18 @@ export default function Villas() {
             />
           </Col>
           <Col>
-            <Segmented
-              value={managedFilter}
-              onChange={v => { setManagedFilter(v); setPage(1); }}
-              options={[
-                { label: `All Villas${villaStats ? ` (${villaStats.total})` : ''}`, value: 'all' },
-                { label: `✓ With Contract${villaStats ? ` (${villaStats.managed})` : ''}`, value: 'managed' },
-                { label: `No Contract${villaStats ? ` (${villaStats.unmanaged})` : ''}`, value: 'unmanaged' },
-              ]}
-            />
+            <Space>
+              <Switch
+                checked={contractActive}
+                onChange={v => { setContractActive(v); setPage(1); }}
+                size="small"
+              />
+              <span style={{ fontSize: 13 }}>Active Contract</span>
+            </Space>
           </Col>
         </Row>
         <Table
+        size="small"
           dataSource={data?.data}
           columns={columns}
           rowKey="id"
@@ -224,12 +241,24 @@ export default function Villas() {
                 </Select>
               </Form.Item>
             </Col>
+          </Row>
+
+          <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="is_managed" label="Management Contract" valuePropName="checked" initialValue={false}>
-                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+              <Form.Item name="contract_start_date" label="Contract Start Date">
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="contract_end_date" label="Contract End Date">
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="contract_monthly_value" label="Monthly Contract Value (OMR)">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="0.000" />
+          </Form.Item>
+
           <Form.Item name="description" label="Description">
             <TextArea rows={2} />
           </Form.Item>

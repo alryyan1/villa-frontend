@@ -7,7 +7,7 @@ import {
   DashboardOutlined, HomeOutlined, UserOutlined, TeamOutlined,
   CalendarOutlined, BarChartOutlined, LogoutOutlined, MenuFoldOutlined,
   MenuUnfoldOutlined, FileTextOutlined, SettingOutlined, AimOutlined, ToolOutlined,
-  BulbOutlined, BulbFilled,
+  BulbOutlined, BulbFilled, BuildOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../store/AuthContext';
 import { HeaderToolbarProvider, useHeaderToolbar } from '../store/HeaderToolbarContext';
@@ -33,6 +33,7 @@ const menuItems = [
       { key: '/reports/payment-methods', label: 'Payment Methods' },
     ],
   },
+  { key: '/maintenance', icon: <BuildOutlined />, label: 'Maintenance' },
   { key: '/users', icon: <SettingOutlined />, label: 'Users' },
   { key: '/activity-logs', icon: <FileTextOutlined />, label: 'Activity Log' },
   { key: '/settings', icon: <ToolOutlined />, label: 'Settings' },

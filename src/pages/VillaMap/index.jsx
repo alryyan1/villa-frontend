@@ -21,9 +21,9 @@ const { RangePicker } = DatePicker;
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CFG = {
-  available: { color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f', label: 'Available' },
-  occupied: { color: '#fa8c16', bg: '#fff7e6', border: '#ffd591', label: 'Occupied' },
-  maintenance: { color: '#ff4d4f', bg: '#fff2f0', border: '#ffccc7', label: 'Maintenance' },
+  available:   { color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f', label: 'Available' },
+  occupied:    { color: '#cf1322', bg: '#fff1f0', border: '#ffa39e', label: 'Occupied' },
+  maintenance: { color: '#531dab', bg: '#f9f0ff', border: '#d3adf7', label: 'Maintenance' },
 };
 const UNCONFIGURED = { color: '#bfbfbf', bg: '#fafafa', border: '#d9d9d9', label: 'Not configured' };
 
@@ -50,6 +50,7 @@ const MAP = {
 // ─── VillaTile ────────────────────────────────────────────────────────────────
 function VillaTile({ number, villa, highlight, dimmed, onClick }) {
   if (number === null) return <div style={{ width: 18, flexShrink: 0 }} />;
+  const checkingIn = villa?.checking_in_today;
 
   const cfg = STATUS_CFG[villa?.status] ?? UNCONFIGURED;
 
@@ -59,7 +60,8 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }) {
         <div style={{ lineHeight: 1.6 }}>
           <div style={{ fontWeight: 700 }}>{villa?.name ?? `#${number}`}</div>
           <div>Status: {cfg.label}</div>
-          {villa && <div>Contract: {villa.is_managed ? '✓ Managed' : 'No contract'}</div>}
+          {villa?.checking_in_today && <div style={{ color: '#ffd666' }}>👤 Guest is currently inside</div>}
+          {villa && <div>Contract: {villa.contract_active ? '✓ Active' : 'No active contract'}</div>}
           {villa?.owner?.name && <div>Owner: {villa.owner.name}</div>}
           {villa?.price_per_night > 0 && (
             <div>OMR {Number(villa.price_per_night).toLocaleString()}/night</div>
@@ -97,7 +99,7 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }) {
           position: 'relative',
         }}
       >
-        {villa?.is_managed && (
+        {villa?.contract_active && (
           <span style={{
             position: 'absolute',
             top: 2,
@@ -105,8 +107,18 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }) {
             width: 7,
             height: 7,
             borderRadius: '50%',
-            background: '#faad14',
+            background: '#52c41a',
             boxShadow: '0 0 0 1.5px #fff',
+          }} />
+        )}
+        {checkingIn && (
+          <UserOutlined style={{
+            position: 'absolute',
+            top: 3,
+            left: 4,
+            fontSize: 10,
+            color: cfg.color,
+            opacity: 0.85,
           }} />
         )}
         {number}
@@ -163,7 +175,7 @@ function RoadDivider() {
 export default function VillaMap() {
   usePageTitle('Villa Map');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [managedOnly, setManagedOnly] = useState(false);
+  const [contractOnly, setContractOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedVilla, setSelectedVilla] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -171,6 +183,8 @@ export default function VillaMap() {
   const [availability, setAvailability] = useState(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [form] = Form.useForm();
+  const [guestForm] = Form.useForm();
+  const [guestModalOpen, setGuestModalOpen] = useState(false);
   const datePickerRef = useRef(null);
   const qc = useQueryClient();
   const { message } = App.useApp();
@@ -208,7 +222,7 @@ export default function VillaMap() {
     });
     return map;
   }, [villasData]);
-
+  console.log('villaByNumber', villaByNumber);
   const searchNum = search.trim() ? parseInt(search.trim(), 10) : null;
 
   // ── Stats ─────────────────────────────────────────────────────────────────
@@ -219,7 +233,7 @@ export default function VillaMap() {
       available:   all.filter(v => v.status === 'available').length,
       occupied:    all.filter(v => v.status === 'occupied').length,
       maintenance: all.filter(v => v.status === 'maintenance').length,
-      managed:     all.filter(v => v.is_managed).length,
+      contractActive: all.filter(v => v.contract_active).length,
     };
   }, [villasData]);
 
@@ -267,6 +281,18 @@ export default function VillaMap() {
     onError: e => message.error(e.response?.data?.message || 'Failed to create booking.'),
   });
 
+  const createGuest = useMutation({
+    mutationFn: vals => client.post('/guests', vals),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['guests-all'] });
+      form.setFieldValue('guest_id', res.data.id);
+      message.success(`Guest "${res.data.name}" created.`);
+      setGuestModalOpen(false);
+      guestForm.resetFields();
+    },
+    onError: e => message.error(e.response?.data?.message || 'Failed to create guest.'),
+  });
+
   const onBookingFinish = vals => {
     createBooking.mutate({
       villa_id: selectedVilla.id,
@@ -279,6 +305,9 @@ export default function VillaMap() {
       notes: vals.notes,
     });
   };
+  useEffect(() => {
+    setContractOnly(true);
+  },[])
 
   // ── Tile helper ───────────────────────────────────────────────────────────
   const tile = n => {
@@ -286,7 +315,7 @@ export default function VillaMap() {
     const villa = villaByNumber[n];
     const highlight = !!(searchNum && searchNum === n);
     const dimmed = (statusFilter !== 'all' && villa?.status !== statusFilter)
-                || (managedOnly && villa && !villa.is_managed);
+                || (contractOnly && villa && !villa.contract_active);
     return (
       <VillaTile
         key={n}
@@ -307,11 +336,21 @@ export default function VillaMap() {
   useEffect(() => {
     setToolbar(
       <Space size={10} style={{ width: '100%' }} wrap={false}>
+        <Space><AimOutlined /><span style={{ fontWeight: 600 }}>Villa Map</span></Space>
         <Input
           placeholder="Search villa…"
           prefix={<SearchOutlined />}
           value={search}
           onChange={e => setSearch(e.target.value)}
+          onPressEnter={() => {
+            if (search) {
+              const villa = villaByNumber[parseInt(search)];
+              if (villa) {
+                setSelectedVilla(villa);
+                setDrawerOpen(true);
+              }
+            }
+          }}
           allowClear
           size="small"
           style={{ width: 150 }}
@@ -335,15 +374,15 @@ export default function VillaMap() {
         </Radio.Group>
         <Button
           size="small"
-          type={managedOnly ? 'primary' : 'default'}
-          onClick={() => setManagedOnly(v => !v)}
-          style={managedOnly ? {} : { color: '#faad14', borderColor: '#faad14' }}
+          type={contractOnly ? 'primary' : 'default'}
+          onClick={() => setContractOnly(v => !v)}
+          style={contractOnly ? {} : { color: '#52c41a', borderColor: '#52c41a' }}
         >
           <span style={{
             display: 'inline-block', width: 8, height: 8,
-            borderRadius: '50%', background: '#faad14', marginRight: 5,
+            borderRadius: '50%', background: '#52c41a', marginRight: 5,
           }} />
-          Contract ({stats.managed})
+          Active ({stats.contractActive})
         </Button>
         <Button
           size="small"
@@ -353,7 +392,7 @@ export default function VillaMap() {
       </Space>
     );
     return () => clearToolbar();
-  }, [search, statusFilter, managedOnly, stats, isFetching]);
+  }, [search, statusFilter, contractOnly, stats, isFetching]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -364,8 +403,27 @@ export default function VillaMap() {
     );
   }
 
+  const LEGEND = [
+    { key: 'available',   dot: '#52c41a', desc: 'Available — no active booking today' },
+    { key: 'occupied',    dot: '#cf1322', desc: 'Occupied — guest currently checked in' },
+    { key: 'maintenance', dot: '#531dab', desc: 'Maintenance — manually set by staff' },
+  ];
+
   return (
-    <div>
+    <div style={{userSelect:'none'}}>
+      {/* ── Legend ── */}
+      <div style={{ display: 'flex', gap: 24, marginBottom: 10, flexWrap: 'wrap' }}>
+        {LEGEND.map(({ key, dot, desc }) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#595959' }}>
+            <span style={{
+              display: 'inline-block', width: 12, height: 12,
+              borderRadius: '50%', background: dot, flexShrink: 0,
+            }} />
+            {desc}
+          </div>
+        ))}
+      </div>
+
       {/* ── Map ── */}
       <Card style={{ overflowX: 'auto' }}>
         <div style={{ minWidth: 860, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
@@ -393,7 +451,7 @@ export default function VillaMap() {
               </div>
 
               {/* Garden section */}
-              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, maxWidth: 900 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, maxWidth: 1200 }}>
                 {/* Garden top rows */}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -445,7 +503,7 @@ export default function VillaMap() {
                 {/* Bottom: Pearl | Breeze | gap | Breeze | Pearl */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, justifyContent: 'center' }}>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
                     {MAP.pearlLeft.map(n => <div key={n}>{tile(n)}</div>)}
                     <ZoneLabel label="Pearl" color="#d46b08" />
                   </div>
@@ -462,7 +520,7 @@ export default function VillaMap() {
                     <ZoneLabel label="Breeze" color="#0958d9" />
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
                     {MAP.pearlRight.map(n => <div key={n}>{tile(n)}</div>)}
                     <ZoneLabel label="Pearl" color="#d46b08" />
                   </div>
@@ -528,9 +586,9 @@ export default function VillaMap() {
                 <Text strong>OMR {Number(selectedVilla.price_per_night).toLocaleString()}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Contract">
-                {selectedVilla.is_managed
-                  ? <Tag color="gold">✓ Managed</Tag>
-                  : <Tag color="default">No contract</Tag>
+                {selectedVilla.contract_active
+                  ? <Tag color="green">✓ Active</Tag>
+                  : <Tag color="default">No active contract</Tag>
                 }
               </Descriptions.Item>
               {selectedVilla.notes && (
@@ -656,6 +714,23 @@ export default function VillaMap() {
               showSearch
               optionFilterProp="children"
               onChange={() => setTimeout(() => setDatePickerOpen(true), 100)}
+              dropdownRender={menu => (
+                <>
+                  {menu}
+                  <Divider style={{ margin: '4px 0' }} />
+                  <div style={{ padding: '4px 8px 6px' }}>
+                    <Button
+                      type="link"
+                      icon={<PlusOutlined />}
+                      size="small"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => setGuestModalOpen(true)}
+                    >
+                      New Guest
+                    </Button>
+                  </div>
+                </>
+              )}
             >
               {(guests || []).map(g => (
                 <Select.Option key={g.id} value={g.id}>
@@ -713,6 +788,36 @@ export default function VillaMap() {
           <Form.Item name="notes" label="Notes" style={{ marginBottom: 4 }}>
             <Input.TextArea rows={2} />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Quick guest creation modal */}
+      <Modal
+        title={<Space><UserOutlined /><span>New Guest</span></Space>}
+        open={guestModalOpen}
+        onCancel={() => { setGuestModalOpen(false); guestForm.resetFields(); }}
+        onOk={() => guestForm.submit()}
+        confirmLoading={createGuest.isPending}
+        width={400}
+        centered
+        okText="Create Guest"
+      >
+        <Form form={guestForm} layout="vertical" onFinish={vals => createGuest.mutate(vals)} style={{ marginTop: 12 }}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input placeholder="Full name" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="phone" label="Phone">
+                <Input placeholder="+968 ..." />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="id_number" label="Civil / National ID">
+                <Input placeholder="ID number" />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>

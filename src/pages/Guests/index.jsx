@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Space, Typography,
+  Table, Button, Modal, Form, Input, Space,
   Popconfirm, Card, Row, Col, App, Badge,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined } from '@ant-design/icons';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 
-const { Title } = Typography;
 const { TextArea } = Input;
 
 export default function Guests() {
@@ -19,6 +19,19 @@ export default function Guests() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
+  const { setToolbar, clearToolbar } = useHeaderToolbar();
+
+  useEffect(() => {
+    setToolbar(
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <Space><UserOutlined /><span style={{ fontWeight: 600 }}>Guest Management</span></Space>
+        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
+          Add Guest
+        </Button>
+      </div>
+    );
+    return () => clearToolbar();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading } = useQuery({
     queryKey: ['guests', search],
@@ -72,13 +85,6 @@ export default function Guests() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><UserOutlined /> Guest Management</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
-          Add Guest
-        </Button>
-      </Row>
-
       <Card>
         <Input.Search
           placeholder="Search by name, phone, or ID..."

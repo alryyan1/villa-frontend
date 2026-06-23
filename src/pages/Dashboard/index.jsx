@@ -44,8 +44,7 @@ export default function Dashboard() {
           <Card>
             <Statistic title="Total Villas" value={data?.total_villas} prefix={<HomeOutlined />} valueStyle={{ color: '#1677ff' }} />
             <div style={{ marginTop: 4 }}>
-              <Text style={{ color: '#52c41a', fontWeight: 600 }}>✓ Managed: {data?.managed_villas}</Text>
-              <Text type="secondary"> · No contract: {data?.unmanaged_villas}</Text>
+              <Text style={{ color: '#52c41a', fontWeight: 600 }}>✓ Active contracts: {data?.active_contracts}</Text>
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>Available: {data?.available_villas} | Occupied: {data?.occupied_villas}</Text>
           </Card>

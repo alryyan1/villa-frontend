@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider } from 'antd';
-import { UserOutlined, LockOutlined, BellOutlined, PlusOutlined, DeleteOutlined, WhatsAppOutlined } from '@ant-design/icons';
+import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider, Select, Row, Col } from 'antd';
+import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -109,22 +109,30 @@ function PasswordTab() {
   );
 }
 
+const LANG_OPTIONS = [
+  { value: 'ar',    label: 'Arabic (ar)' },
+  { value: 'en_US', label: 'English (en_US)' },
+  { value: 'en',    label: 'English (en)' },
+];
+
 function NotificationsTab() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const [recipientForm] = Form.useForm();
+  const [templateForm] = Form.useForm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: () => client.get('/settings').then(r => r.data),
-    onSuccess: (d) => {
-      recipientForm.setFieldsValue({ recipients: d?.whatsapp_recipients?.length ? d.whatsapp_recipients : [''] });
-    },
   });
 
-  // Populate form when data loads
-  if (data && !recipientForm.getFieldValue('recipients')) {
-    recipientForm.setFieldsValue({ recipients: data?.whatsapp_recipients?.length ? data.whatsapp_recipients : [''] });
+  // Populate template form when data loads
+  if (data && !templateForm.getFieldValue('owner_booking_template')) {
+    templateForm.setFieldsValue({
+      owner_booking_template:      data.owner_booking_template      ?? '',
+      owner_booking_template_lang: data.owner_booking_template_lang ?? 'ar',
+      guest_booking_template:      data.guest_booking_template      ?? '',
+      guest_booking_template_lang: data.guest_booking_template_lang ?? 'ar',
+    });
   }
 
   const { mutate, isPending } = useMutation({
@@ -136,30 +144,23 @@ function NotificationsTab() {
     onError: () => message.error('Failed to save settings.'),
   });
 
-  const saveRecipients = (vals) => {
-    const numbers = (vals.recipients || []).map(p => (p || '').trim()).filter(Boolean);
-    mutate({ whatsapp_recipients: numbers });
-  };
-
   if (isLoading) return <Skeleton active paragraph={{ rows: 4 }} />;
 
-  const enabled = data?.whatsapp_enabled === '1';
-
   return (
-    <div style={{ maxWidth: 520 }}>
+    <div style={{ maxWidth: 540 }}>
       <Descriptions column={1} bordered>
         <Descriptions.Item
           label={
             <span>
               WhatsApp Notifications
               <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
-                Send booking alerts via WhatsApp to owners, guests, and management
+                Send booking alerts via WhatsApp to owners and guests
               </div>
             </span>
           }
         >
           <Switch
-            checked={enabled}
+            checked={data?.whatsapp_enabled === '1'}
             loading={isPending}
             checkedChildren="Enabled"
             unCheckedChildren="Disabled"
@@ -171,7 +172,7 @@ function NotificationsTab() {
             <span>
               Owner Notifications
               <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
-                Notify the villa owner via WhatsApp when a booking is created, updated or cancelled
+                Send the owner template when a booking is created
               </div>
             </span>
           }
@@ -188,38 +189,55 @@ function NotificationsTab() {
 
       <Divider orientation="left" style={{ marginTop: 24 }}>
         <WhatsAppOutlined style={{ marginRight: 6 }} />
-        Notification Recipients
+        Booking Templates
       </Divider>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-        Phone numbers that receive booking notifications. Include country code (e.g. 96878622990).
+      <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
+        Template names must match exactly what is approved in your Meta WhatsApp Business account.
+        Parameters sent: <Text code>{'{{1}}'}</Text> guest name, <Text code>{'{{2}}'}</Text> villa name,
+        <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,
+        <Text code>{'{{5}}'}</Text> guests, <Text code>{'{{6}}'}</Text> total, <Text code>{'{{7}}'}</Text> nights.
       </Text>
 
-      <Form form={recipientForm} onFinish={saveRecipients}>
-        <Form.List name="recipients">
-          {(fields, { add, remove }) => (
-            <>
-              {fields.map((field, index) => (
-                <Space key={field.key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                  <Form.Item {...field} noStyle rules={[{ pattern: /^\d{7,15}$/, message: 'Enter digits only, 7–15 chars' }]}>
-                    <Input
-                      prefix={<WhatsAppOutlined style={{ color: '#25D366' }} />}
-                      placeholder="e.g. 96878622990"
-                      style={{ width: 260 }}
-                    />
-                  </Form.Item>
-                  {fields.length > 1 && (
-                    <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
-                  )}
-                </Space>
-              ))}
-              <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()} style={{ width: 260 }}>
-                Add Number
-              </Button>
-            </>
-          )}
-        </Form.List>
-        <Button type="primary" htmlType="submit" loading={isPending} style={{ marginTop: 16 }}>
-          Save Recipients
+      <Form
+        form={templateForm}
+        layout="vertical"
+        onFinish={(vals) => mutate(vals)}
+        style={{ maxWidth: 480 }}
+      >
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+          <UserOutlined style={{ marginRight: 6 }} />Owner Template
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="owner_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_owner" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="owner_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+          <WhatsAppOutlined style={{ color: '#25D366', marginRight: 6 }} />Guest Template
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="guest_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_guest" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="guest_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Button type="primary" htmlType="submit" loading={isPending}>
+          Save Templates
         </Button>
       </Form>
 

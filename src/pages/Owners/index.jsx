@@ -1,15 +1,76 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, Space, Typography,
   Popconfirm, Card, Row, Col, App, Badge, Upload, Alert,
+  Popover, Tag, Spin,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined, HomeOutlined } from '@ant-design/icons';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 
-const { Title } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
+
+const villaStatusColor = { available: 'green', occupied: 'orange', maintenance: 'red' };
+
+function VillasPopover({ owner }) {
+  const [open, setOpen] = useState(false);
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['owner-villas', owner.id],
+    queryFn: () => client.get(`/owners/${owner.id}`).then(r => r.data),
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  const content = isFetching ? (
+    <div style={{ padding: '12px 0', textAlign: 'center' }}><Spin size="small" /></div>
+  ) : (
+    <div style={{ minWidth: 220, maxWidth: 300 }}>
+      {(data?.villas ?? []).length === 0 ? (
+        <Text type="secondary">No villas assigned.</Text>
+      ) : (
+        (data.villas).map(v => (
+          <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0f0f0' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                <HomeOutlined style={{ marginRight: 5, color: '#1677ff' }} />{v.name}
+              </div>
+              <div style={{ fontSize: 11, color: '#888' }}>
+                {v.num_rooms ? `${v.num_rooms} rooms` : ''}
+                {v.num_rooms && v.price_per_night ? ' · ' : ''}
+                {v.price_per_night ? `${Number(v.price_per_night).toLocaleString()} OMR/night` : ''}
+              </div>
+            </div>
+            <Tag color={villaStatusColor[v.status] ?? 'default'} style={{ marginLeft: 8, flexShrink: 0 }}>
+              {v.status}
+            </Tag>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <Popover
+      title={`${owner.name}'s Villas`}
+      content={content}
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      placement="left"
+    >
+      <Badge
+        count={owner.villas_count}
+        color="blue"
+        showZero
+        style={{ cursor: owner.villas_count > 0 ? 'pointer' : 'default' }}
+      />
+    </Popover>
+  );
+}
 
 export default function Owners() {
   usePageTitle('Owners');
@@ -23,6 +84,7 @@ export default function Owners() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
+  const { setToolbar, clearToolbar } = useHeaderToolbar();
 
   const { data, isLoading } = useQuery({
     queryKey: ['owners', search, page, perPage],
@@ -59,6 +121,34 @@ export default function Owners() {
     onError: (e) => message.error(e.response?.data?.message || 'Failed.'),
   });
 
+  useEffect(() => {
+    setToolbar(
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <Space><TeamOutlined /><span style={{ fontWeight: 600 }}>Owner Management</span></Space>
+        <Space size="small">
+          <Button size="small" icon={<UploadOutlined />} onClick={() => { setImportResult(null); setImportOpen(true); }}>
+            Import Excel
+          </Button>
+          <Popconfirm
+            title="Copy all phone numbers to WhatsApp?"
+            description="Fill WhatsApp number for owners who have a phone but no WhatsApp set."
+            onConfirm={() => copyPhones.mutate()}
+            okText="Yes, copy"
+            cancelText="Cancel"
+          >
+            <Button size="small" icon={<CopyOutlined />} loading={copyPhones.isPending}>
+              Copy Phones → WhatsApp
+            </Button>
+          </Popconfirm>
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
+            Add Owner
+          </Button>
+        </Space>
+      </div>
+    );
+    return () => clearToolbar();
+  }, [copyPhones.isPending]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const importMutation = useMutation({
     mutationFn: (file) => {
       const formData = new FormData();
@@ -89,14 +179,12 @@ export default function Owners() {
         : '-',
     },
     { title: 'Email', dataIndex: 'email', render: v => v || '-' },
-    { title: 'Villas', dataIndex: 'villas_count', width: 80, sorter: (a, b) => a.villas_count - b.villas_count, render: v => <Badge count={v} color="blue" showZero /> },
+    { title: 'Villas', dataIndex: 'villas_count', width: 80, sorter: (a, b) => a.villas_count - b.villas_count, render: (_, r) => <VillasPopover owner={r} /> },
     {
       title: 'Actions', key: 'actions', render: (_, r) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title="Delete this owner?" onConfirm={() => remove.mutate(r.id)} okText="Yes" cancelText="No">
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          
         </Space>
       ),
     },
@@ -104,28 +192,6 @@ export default function Owners() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><TeamOutlined /> Owner Management</Title>
-        <Space>
-          <Button icon={<UploadOutlined />} onClick={() => { setImportResult(null); setImportOpen(true); }}>
-            Import Excel
-          </Button>
-          <Popconfirm
-            title="Copy all phone numbers to WhatsApp?"
-            description="This will fill WhatsApp number for owners who have a phone but no WhatsApp set."
-            onConfirm={() => copyPhones.mutate()}
-            okText="Yes, copy"
-            cancelText="Cancel"
-          >
-            <Button icon={<CopyOutlined />} loading={copyPhones.isPending}>
-              Copy Phones → WhatsApp
-            </Button>
-          </Popconfirm>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
-            Add Owner
-          </Button>
-        </Space>
-      </Row>
 
       <Card>
         <Input.Search

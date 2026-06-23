@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Select, Space, Typography,
+  Table, Button, Modal, Form, Input, Select, Space,
   Popconfirm, Card, Row, Col, App, Tag, Switch,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
 import client from '../../api/client';
 import { useAuth } from '../../store/AuthContext';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 
-const { Title } = Typography;
 const { Option } = Select;
 
 const roleColors = { admin: 'red', manager: 'orange', staff: 'blue' };
@@ -23,6 +23,19 @@ export default function Users() {
   const qc = useQueryClient();
   const { message } = App.useApp();
   const { user: currentUser } = useAuth();
+  const { setToolbar, clearToolbar } = useHeaderToolbar();
+
+  useEffect(() => {
+    setToolbar(
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <Space><SettingOutlined /><span style={{ fontWeight: 600 }}>User Management</span></Space>
+        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
+          Add User
+        </Button>
+      </div>
+    );
+    return () => clearToolbar();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
@@ -94,12 +107,6 @@ export default function Users() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}><SettingOutlined /> User Management</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setModalOpen(true); }}>
-          Add User
-        </Button>
-      </Row>
 
       <Card>
         <Table
