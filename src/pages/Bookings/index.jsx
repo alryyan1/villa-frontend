@@ -4,13 +4,16 @@ import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Typography, Popconfirm, Card, Row, Col, App,
   Tabs, Alert, Descriptions, InputNumber, Divider,
-  Tooltip,
+  Tooltip, Spin,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
   DollarOutlined, UnorderedListOutlined, LoginOutlined, LogoutOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, WhatsAppOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useLocation } from 'react-router-dom';
+import { playSuccessChime } from '../../utils/sounds';
 import client from '../../api/client';
 import BookingCalendar from './CalendarView';
 import { usePageTitle } from '../../hooks/usePageTitle';
@@ -44,11 +47,19 @@ export default function Bookings() {
   const [selectedVillaRooms, setSelectedVillaRooms] = useState(null);
   const [filterGuest, setFilterGuest]   = useState(null);
   const [filterVilla, setFilterVilla]   = useState(null);
+  const [filterDates, setFilterDates]   = useState(null);
+  const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null });
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
   const { setToolbar, clearToolbar } = useHeaderToolbar();
+  const location = useLocation();
+
+  useEffect(() => {
+    const villaId = location.state?.filterVillaId;
+    if (villaId) setFilterVilla(villaId);
+  }, [location.state?.filterVillaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setToolbar(
@@ -63,11 +74,13 @@ export default function Bookings() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isLoading } = useQuery({
-    queryKey: ['bookings', filterGuest, filterVilla],
+    queryKey: ['bookings', filterGuest, filterVilla, filterDates],
     queryFn: () => client.get('/bookings', {
       params: {
-        ...(filterGuest ? { guest_id: filterGuest } : {}),
-        ...(filterVilla ? { villa_id: filterVilla } : {}),
+        ...(filterGuest  ? { guest_id: filterGuest } : {}),
+        ...(filterVilla  ? { villa_id: filterVilla } : {}),
+        ...(filterDates?.[0] ? { from: filterDates[0].format('YYYY-MM-DD') } : {}),
+        ...(filterDates?.[1] ? { to:   filterDates[1].format('YYYY-MM-DD') } : {}),
       },
     }).then(r => r.data),
   });
@@ -79,20 +92,29 @@ export default function Bookings() {
 
   const { data: guests } = useQuery({
     queryKey: ['guests-all'],
-    queryFn: () => client.get('/guests', { params: { per_page: 200 } }).then(r => r.data.data),
+    queryFn: () => client.get('/guests').then(r => r.data),
   });
 
   const save = useMutation({
     mutationFn: (vals) => editing
       ? client.put(`/bookings/${editing.id}`, vals)
       : client.post('/bookings', vals),
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['bookings'] });
+      if (!editing) playSuccessChime();
       message.success(editing ? 'Booking updated.' : 'Booking created.');
       setModalOpen(false);
       form.resetFields();
       setEditing(null);
       setAvailability(null);
+
+      if (!editing) {
+        setWaModal({ open: true, owner: null, tenant: null });
+        setTimeout(() => {
+          const wa = res.data?.whatsapp ?? {};
+          setWaModal({ open: true, owner: wa.owner ?? null, tenant: wa.tenant ?? null });
+        }, 1000);
+      }
     },
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
@@ -190,6 +212,159 @@ export default function Bookings() {
     ? Number(selected.total_amount) - Number(selected.paid_amount)
     : 0;
 
+  const openConfirmation = (b) => {
+    const fmt  = d => dayjs(d).format('MMMM D, YYYY');
+    const omr  = v => `OMR ${Number(v).toLocaleString(undefined, { minimumFractionDigits: 3 })}`;
+    const rem  = Number(b.total_amount) - Number(b.paid_amount);
+    const meth = { cash: 'Cash', card: 'Card (Visa/MC)', bank_transfer: 'Bank Transfer' };
+    const band = Array(10).fill('Al Seef &nbsp;&nbsp;·&nbsp;&nbsp;').join('');
+
+    const paymentsRows = (b.payments || []).map(p => `
+      <tr>
+        <td>${p.payment_date ?? '—'}</td>
+        <td>${omr(p.amount)}</td>
+        <td>${meth[p.method] ?? p.method}</td>
+        <td>${p.user?.name ?? '—'}</td>
+        <td>${p.notes ?? '—'}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Booking Confirmation #${b.id}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:13px;color:#222;background:#fff}
+  @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+  .page{width:760px;margin:24px auto;border:1px solid #bbb}
+  /* header */
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 22px 12px}
+  .logo{font-family:Georgia,serif;font-size:30px;font-weight:700;letter-spacing:0.18em;color:#4a3000}
+  .logo-sub{font-size:10px;letter-spacing:0.22em;color:#8B6914;margin-top:2px}
+  .logo-dots{display:flex;gap:5px;margin-top:6px}
+  .logo-dot{width:12px;height:12px;border-radius:50%}
+  .ttl{text-align:right}
+  .ttl h1{font-size:24px;font-weight:700;color:#222}
+  .ttl h1 span{color:#c00}
+  .ttl p{font-size:10.5px;color:#666;max-width:300px;margin-top:4px;text-align:right}
+  /* band */
+  .band{background:#C9A96E;padding:5px 12px;font-size:11px;color:#fff;font-weight:600;letter-spacing:0.06em;white-space:nowrap;overflow:hidden}
+  /* two-col */
+  .body{display:flex;border-bottom:1px solid #ddd}
+  .lcol{flex:1;padding:14px 18px;border-right:1px solid #ddd}
+  .rcol{width:250px;padding:14px 18px}
+  .f{display:flex;margin-bottom:9px;align-items:baseline}
+  .fl{width:148px;color:#555;flex-shrink:0;font-size:12px}
+  .fv{font-weight:600}
+  .fvbox{border:1px solid #bbb;padding:2px 10px;text-align:center;min-width:60px;display:inline-block}
+  /* policy */
+  .policy{padding:8px 18px;background:#fafafa;border-bottom:1px solid #ddd;font-size:11.5px}
+  /* dates */
+  .dates{display:flex;gap:36px;padding:14px 18px;border-bottom:1px solid #ddd;align-items:flex-end}
+  .db label{font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:#666;display:block;margin-bottom:4px}
+  .db .dv{font-size:16px;font-weight:700;border:1px solid #aaa;padding:5px 18px;display:inline-block}
+  /* payments table */
+  .ptable{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+  .ptable th{background:#f5f5f5;padding:5px 8px;border:1px solid #ddd;text-align:left;font-weight:600}
+  .ptable td{padding:5px 8px;border:1px solid #ddd}
+  /* booked-by */
+  .bb{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 18px;border-bottom:1px solid #ddd}
+  .stamp{width:88px;height:64px;border:1px solid #bbb;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center;line-height:1.5}
+  /* footer */
+  .fnote{padding:10px 18px;background:#fffbe6;border-top:1px solid #ffe58f;font-size:11px;color:#7c5c00}
+  .section-title{font-weight:700;font-size:12px;margin-bottom:10px;color:#4a3000;border-bottom:1px solid #e8d5a3;padding-bottom:4px}
+  .green{color:#389e0d}.orange{color:#d46b08}.red{color:#cf1322}
+</style></head><body>
+<div class="page">
+  <div class="hdr">
+    <div>
+      <div class="logo">Al Seef</div>
+      <div class="logo-sub">LUXURY WATERFRONT LIVING</div>
+      <div class="logo-dots">
+        <div class="logo-dot" style="background:#C9A96E"></div>
+        <div class="logo-dot" style="background:#8B6914"></div>
+        <div class="logo-dot" style="background:#D4B896"></div>
+        <div class="logo-dot" style="background:#A0784A"></div>
+        <div class="logo-dot" style="background:#C9A96E"></div>
+      </div>
+    </div>
+    <div class="ttl">
+      <h1>Booking <span>Confirmation</span></h1>
+      <p>Please present either an electronic or paper copy of this confirmation upon check-in.</p>
+    </div>
+  </div>
+
+  <div class="band">${band}</div>
+
+  <div class="body">
+    <div class="lcol">
+      <div class="section-title">Guest &amp; Booking Information</div>
+      <div class="f"><span class="fl">Booking ID :</span><span class="fv">${b.id}</span></div>
+      <div class="f"><span class="fl">Client :</span><span class="fv" style="font-size:14px">${b.guest?.name ?? '—'}</span></div>
+      ${b.guest?.id_number  ? `<div class="f"><span class="fl">Civil / Passport ID :</span><span class="fv">${b.guest.id_number}</span></div>` : ''}
+      ${b.guest?.nationality? `<div class="f"><span class="fl">Nationality :</span><span class="fv">${b.guest.nationality}</span></div>` : ''}
+      ${b.guest?.phone      ? `<div class="f"><span class="fl">Phone :</span><span class="fv">${b.guest.phone}</span></div>` : ''}
+      <div class="f" style="margin-top:10px"><span class="fl">Property :</span><span class="fv">${b.villa?.name ?? '—'}</span></div>
+      ${b.villa?.category   ? `<div class="f"><span class="fl">Villa Type :</span><span class="fv">${b.villa.category}</span></div>` : ''}
+      ${b.check_in_time     ? `<div class="f"><span class="fl">Check-in Time :</span><span class="fv">${b.check_in_time}</span></div>` : ''}
+    </div>
+    <div class="rcol">
+      <div class="section-title">Stay Details</div>
+      <div class="f"><span class="fl">Number of Guests :</span><span class="fv fvbox">${b.num_guests ?? 1}</span></div>
+      ${b.villa?.num_rooms  ? `<div class="f"><span class="fl">Rooms :</span><span class="fv fvbox">${b.villa.num_rooms}</span></div>` : ''}
+      <div class="f"><span class="fl">Nights :</span><span class="fv fvbox">${b.nights}</span></div>
+      <div class="f" style="margin-top:12px"><span class="fl">Total Amount :</span><span class="fv">${omr(b.total_amount)}</span></div>
+      <div class="f"><span class="fl">Amount Paid :</span><span class="fv green">${omr(b.paid_amount)}</span></div>
+      <div class="f"><span class="fl">Remaining :</span><span class="fv ${rem > 0 ? 'orange' : 'green'}">${omr(rem)}</span></div>
+      <div class="f" style="margin-top:8px"><span class="fl">Payment Status :</span><span class="fv">${(b.payment_status ?? '').toUpperCase()}</span></div>
+    </div>
+  </div>
+
+  <div class="policy">
+    <strong>Booking Status:</strong> ${(b.status ?? '').toUpperCase()}
+    ${b.notes ? `&nbsp;&nbsp;&nbsp;<strong>Notes:</strong> ${b.notes}` : ''}
+  </div>
+
+  <div class="dates">
+    <div class="db">
+      <label>Arrival</label>
+      <div class="dv">${fmt(b.check_in)}${b.check_in_time ? ' &nbsp;@&nbsp; ' + b.check_in_time : ''}</div>
+    </div>
+    <div class="db">
+      <label>Departure</label>
+      <div class="dv">${fmt(b.check_out)}</div>
+    </div>
+  </div>
+
+  ${paymentsRows ? `
+  <div style="padding:14px 18px;border-bottom:1px solid #ddd">
+    <div class="section-title">Payments Received</div>
+    <table class="ptable">
+      <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Recorded By</th><th>Notes</th></tr></thead>
+      <tbody>${paymentsRows}</tbody>
+    </table>
+  </div>` : ''}
+
+  <div class="bb">
+    <div style="font-size:12px;line-height:1.8">
+      <strong>Al Seef — Luxury Waterfront Living</strong><br>
+      Muscat, Sultanate of Oman<br>
+      <span style="color:#888;font-size:11px">Generated: ${new Date().toLocaleString()}</span>
+    </div>
+    <div class="stamp">Authorized<br>Stamp &amp;<br>Signature</div>
+  </div>
+
+  <div class="fnote">
+    <strong>Note to guest:</strong> Please present a valid photo ID upon check-in. This confirmation serves as your official booking receipt.
+    For inquiries please contact the Al Seef reception.
+  </div>
+</div>
+<script>window.onload = () => window.print();</script>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  };
+
   const columns = [
     { title: '#', dataIndex: 'id', width: 50 },
     { title: 'Villa', dataIndex: ['villa', 'name'], width: 110 },
@@ -265,6 +440,10 @@ export default function Bookings() {
       },
     },
     { title: 'Created By', dataIndex: ['user', 'name'] },
+    {
+      title: 'Created At', dataIndex: 'created_at', width: 130,
+      render: v => v ? dayjs(v).format('DD MMM YYYY HH:mm') : '—',
+    },
   ];
 
   return (
@@ -274,8 +453,8 @@ export default function Bookings() {
           key: 'list', label: <><UnorderedListOutlined /> List</>,
           children: (
             <Card>
-              <Row gutter={12} style={{ marginBottom: 12 }}>
-                <Col xs={24} sm={10} md={8}>
+              <Row gutter={12} style={{ marginBottom: 12 }} align="middle">
+                <Col xs={24} sm={12} md={7}>
                   <Select
                     allowClear
                     showSearch
@@ -288,7 +467,7 @@ export default function Bookings() {
                     {guests?.map(g => <Option key={g.id} value={g.id}>{g.name}{g.phone ? ` — ${g.phone}` : ''}</Option>)}
                   </Select>
                 </Col>
-                <Col xs={24} sm={10} md={8}>
+                <Col xs={24} sm={12} md={7}>
                   <Select
                     allowClear
                     showSearch
@@ -301,12 +480,25 @@ export default function Bookings() {
                     {villas?.map(v => <Option key={v.id} value={v.id}>{v.name}</Option>)}
                   </Select>
                 </Col>
-                {(filterGuest || filterVilla) && (
+                <Col xs={24} sm={16} md={8}>
+                  <RangePicker
+                    style={{ width: '100%' }}
+                    placeholder={['Check-in from', 'Check-out to']}
+                    value={filterDates}
+                    onChange={setFilterDates}
+                  />
+                </Col>
+                {(filterGuest || filterVilla || filterDates) && (
                   <Col>
-                    <Button onClick={() => { setFilterGuest(null); setFilterVilla(null); }}>Clear</Button>
+                    <Button onClick={() => { setFilterGuest(null); setFilterVilla(null); setFilterDates(null); }}>Clear</Button>
                   </Col>
                 )}
               </Row>
+              {!isLoading && data?.total != null && (
+                <div style={{ marginBottom: 8, color: '#595959', fontSize: 13 }}>
+                  <strong>{data.total}</strong> booking{data.total !== 1 ? 's' : ''} found
+                </div>
+              )}
               <Table
                 dataSource={data?.data}
                 columns={columns}
@@ -346,6 +538,9 @@ export default function Bookings() {
             <Space direction="vertical" style={{ width: '100%' }} size={8}>
               <Button block icon={<CalendarOutlined />} onClick={() => { setSelected(actionRow); setDetailOpen(true); setActionRow(null); }}>
                 View Details
+              </Button>
+              <Button block icon={<UnorderedListOutlined />} style={{ color: '#8B6914', borderColor: '#C9A96E' }} onClick={() => { openConfirmation(actionRow); setActionRow(null); }}>
+                View Confirmation PDF
               </Button>
               <Button block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
                 Edit Booking
@@ -559,12 +754,83 @@ export default function Bookings() {
         </Form>
       </Modal>
 
+      {/* WhatsApp Status Modal */}
+      <Modal
+        open={waModal.open}
+        centered
+        width={360}
+        closable={waModal.owner !== null || waModal.tenant !== null}
+        onCancel={() => setWaModal({ open: false, owner: null, tenant: null })}
+        footer={
+          (waModal.owner !== null || waModal.tenant !== null) ? (
+            <Button type="primary" onClick={() => setWaModal({ open: false, owner: null, tenant: null })}>
+              Done
+            </Button>
+          ) : null
+        }
+        title={
+          <Space>
+            <CheckCircleOutlined style={{ color: '#52c41a' }} />
+            <span>Booking Created</span>
+          </Space>
+        }
+      >
+        <div style={{ padding: '12px 0 4px' }}>
+          <div style={{ fontWeight: 600, marginBottom: 14, color: '#595959', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <WhatsAppOutlined style={{ color: '#25D366' }} /> WhatsApp Notifications
+          </div>
+          {[
+            { key: 'owner',  label: 'Owner' },
+            { key: 'tenant', label: 'Tenant' },
+          ].map(({ key, label }) => {
+            const status = waModal[key];
+            return (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', marginBottom: 8, borderRadius: 8,
+                background: status === null ? '#fafafa' : status.sent ? '#f6ffed' : '#fff2f0',
+                border: `1px solid ${status === null ? '#f0f0f0' : status.sent ? '#b7eb8f' : '#ffccc7'}`,
+              }}>
+                {status === null
+                  ? <Spin size="small" />
+                  : status.sent
+                    ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />
+                    : <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+                }
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    {label}
+                    {status === null && <Text type="secondary" style={{ fontWeight: 400, marginLeft: 6, fontSize: 12 }}>sending…</Text>}
+                  </div>
+                  {status !== null && (
+                    <div style={{ fontSize: 12, color: status.sent ? '#52c41a' : '#ff4d4f', marginTop: 1 }}>
+                      {status.sent ? 'Message sent successfully' : (status.error ?? 'Failed to send')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
+
       {/* Detail Modal */}
       <Modal
         title={`Booking #${selected?.id} Details`}
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
-        footer={null}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Button
+              icon={<UnorderedListOutlined />}
+              style={{ color: '#8B6914', borderColor: '#C9A96E' }}
+              onClick={() => bookingDetail && openConfirmation(bookingDetail)}
+            >
+              Print Confirmation
+            </Button>
+            <Button onClick={() => setDetailOpen(false)}>Close</Button>
+          </div>
+        }
         width={720}
       >
         {bookingDetail && (
@@ -597,6 +863,11 @@ export default function Bookings() {
                 <Tag color={payColors[bookingDetail.payment_status]}>{payLabels[bookingDetail.payment_status]}</Tag>
               </Descriptions.Item>
               {bookingDetail.notes && <Descriptions.Item label="Notes" span={2}>{bookingDetail.notes}</Descriptions.Item>}
+              {bookingDetail.created_at && (
+                <Descriptions.Item label="Created At" span={2}>
+                  {dayjs(bookingDetail.created_at).format('DD MMM YYYY HH:mm')}
+                </Descriptions.Item>
+              )}
             </Descriptions>
 
             {bookingDetail.payments?.length > 0 && (

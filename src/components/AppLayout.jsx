@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../store/AuthContext';
 import { HeaderToolbarProvider, useHeaderToolbar } from '../store/HeaderToolbarContext';
 import { useTheme } from '../store/ThemeContext';
+import NotificationBell from './NotificationBell';
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -91,7 +92,7 @@ function AppLayoutInner() {
       >
         <div style={{ padding: '16px', textAlign: 'center', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
           <Text strong style={{ fontSize: collapsed ? 12 : 16 }}>
-            {collapsed ? '🏡' : ' Villa Manager'}
+            {collapsed ? '' : ' Villa Manager'}
           </Text>
         </div>
         <Menu
@@ -133,6 +134,7 @@ function AppLayoutInner() {
                 </div>
               </Tooltip>
             )}
+            <NotificationBell />
             <Tooltip title={isDark ? 'Switch to Light' : 'Switch to Dark'}>
               <span
                 onClick={toggle}
@@ -152,7 +154,7 @@ function AppLayoutInner() {
           </div>
         </Header>
 
-        <Content style={{ margin: 16, padding: 16, background: token.colorBgContainer, borderRadius: token.borderRadius, overflowY: 'auto', flex: 1 }}>
+        <Content style={{ margin: 3, padding: 3, background: token.colorBgContainer, borderRadius: token.borderRadius, overflowY: 'auto', flex: 1 }}>
           <Outlet />
         </Content>
       </Layout>

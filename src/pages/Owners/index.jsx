@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, Space, Typography,
   Popconfirm, Card, Row, Col, App, Badge, Upload, Alert,
-  Popover, Tag, Spin,
+  Popover, Tag, Spin, Select,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined, HomeOutlined } from '@ant-design/icons';
+import { useLocation } from 'react-router-dom';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
@@ -77,18 +78,24 @@ export default function Owners() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [filterVilla, setFilterVilla] = useState(null);
+
   const [importOpen, setImportOpen] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
   const { setToolbar, clearToolbar } = useHeaderToolbar();
+  const location = useLocation();
+
+  const { data: villasData } = useQuery({
+    queryKey: ['villas-all'],
+    queryFn: () => client.get('/villas', { params: { per_page: 999 } }).then(r => r.data.data),
+  });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owners', search, page, perPage],
-    queryFn: () => client.get('/owners', { params: { search, page, per_page: perPage } }).then(r => r.data),
+    queryKey: ['owners', search, filterVilla],
+    queryFn: () => client.get('/owners', { params: { search, villa_id: filterVilla ?? undefined } }).then(r => r.data),
   });
 
   const save = useMutation({
@@ -168,6 +175,13 @@ export default function Owners() {
     setModalOpen(true);
   };
 
+  useEffect(() => {
+    const editId = location.state?.editOwnerId;
+    if (!editId || !data) return;
+    const owner = data.find(o => o.id === editId);
+    if (owner) openEdit(owner);
+  }, [data, location.state?.editOwnerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const columns = [
     { title: '#', dataIndex: 'id', width: 60, sorter: (a, b) => a.id - b.id },
     { title: 'Name', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name), defaultSortOrder: 'ascend' },
@@ -194,28 +208,31 @@ export default function Owners() {
     <div>
 
       <Card>
-        <Input.Search
-          placeholder="Search by name or phone..."
-          onSearch={v => { setSearch(v); setPage(1); }}
-          onChange={e => { if (!e.target.value) { setSearch(''); setPage(1); } }}
-          style={{ marginBottom: 16, maxWidth: 320 }}
-          allowClear
-        />
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Input.Search
+            placeholder="Search by name or phone..."
+            onSearch={v => { setSearch(v); setPage(1); }}
+            onChange={e => { if (!e.target.value) { setSearch(''); setPage(1); } }}
+            style={{ width: 280 }}
+            allowClear
+          />
+          <Select
+            placeholder="Filter by villa"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ width: 180 }}
+            value={filterVilla}
+            onChange={v => { setFilterVilla(v ?? null); setPage(1); }}
+            options={(villasData ?? []).map(v => ({ value: v.id, label: v.name }))}
+          />
+        </Space>
         <Table
-          dataSource={data?.data}
+          dataSource={data}
           columns={columns}
           rowKey="id"
           loading={isLoading}
-          pagination={{
-            current: page,
-            total: data?.total,
-            pageSize: perPage,
-            pageSizeOptions: [10, 20, 50, 100],
-            showSizeChanger: true,
-            showTotal: (total) => `Total ${total} owners`,
-            onChange: (p, size) => { setPage(p); setPerPage(size); },
-            onShowSizeChange: (_, size) => { setPage(1); setPerPage(size); },
-          }}
+          pagination={false}
           scroll={{ x: 700 }}
         />
       </Card>

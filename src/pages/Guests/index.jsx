@@ -94,11 +94,11 @@ export default function Guests() {
           allowClear
         />
         <Table
-          dataSource={data?.data}
+          dataSource={data}
           columns={columns}
           rowKey="id"
           loading={isLoading}
-          pagination={{ total: data?.total, pageSize: 20 }}
+          pagination={false}
           scroll={{ x: 700 }}
         />
       </Card>

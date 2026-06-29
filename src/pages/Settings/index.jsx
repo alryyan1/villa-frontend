@@ -132,6 +132,8 @@ function NotificationsTab() {
       owner_booking_template_lang: data.owner_booking_template_lang ?? 'ar',
       guest_booking_template:      data.guest_booking_template      ?? '',
       guest_booking_template_lang: data.guest_booking_template_lang ?? 'ar',
+      reception_phone_1:           data.reception_phone_1           ?? '76767769',
+      reception_phone_2:           data.reception_phone_2           ?? '76767768',
     });
   }
 
@@ -152,9 +154,9 @@ function NotificationsTab() {
         <Descriptions.Item
           label={
             <span>
-              WhatsApp Notifications
+              Owner Notifications
               <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
-                Send booking alerts via WhatsApp to owners and guests
+                Send booking alerts via WhatsApp to owners
               </div>
             </span>
           }
@@ -170,19 +172,19 @@ function NotificationsTab() {
         <Descriptions.Item
           label={
             <span>
-              Owner Notifications
+              Tenant Notifications
               <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
-                Send the owner template when a booking is created
+                Send the tenant template when a booking is created
               </div>
             </span>
           }
         >
           <Switch
-            checked={data?.owner_notifications_enabled !== '0'}
+            checked={data?.tenant_notifications_enabled !== '0'}
             loading={isPending}
             checkedChildren="Enabled"
             unCheckedChildren="Disabled"
-            onChange={(checked) => mutate({ owner_notifications_enabled: checked })}
+            onChange={(checked) => mutate({ tenant_notifications_enabled: checked })}
           />
         </Descriptions.Item>
       </Descriptions>
@@ -191,12 +193,6 @@ function NotificationsTab() {
         <WhatsAppOutlined style={{ marginRight: 6 }} />
         Booking Templates
       </Divider>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
-        Template names must match exactly what is approved in your Meta WhatsApp Business account.
-        Parameters sent: <Text code>{'{{1}}'}</Text> guest name, <Text code>{'{{2}}'}</Text> villa name,
-        <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,
-        <Text code>{'{{5}}'}</Text> guests, <Text code>{'{{6}}'}</Text> total, <Text code>{'{{7}}'}</Text> nights.
-      </Text>
 
       <Form
         form={templateForm}
@@ -204,8 +200,13 @@ function NotificationsTab() {
         onFinish={(vals) => mutate(vals)}
         style={{ maxWidth: 480 }}
       >
-        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
           <UserOutlined style={{ marginRight: 6 }} />Owner Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,{' '}
+          <Text code>{'{{5}}'}</Text> total, <Text code>{'{{6}}'}</Text> commission, <Text code>{'{{7}}'}</Text> net.
         </Text>
         <Row gutter={12}>
           <Col span={15}>
@@ -220,8 +221,13 @@ function NotificationsTab() {
           </Col>
         </Row>
 
-        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
           <WhatsAppOutlined style={{ color: '#25D366', marginRight: 6 }} />Guest Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,{' '}
+          <Text code>{'{{5}}'}</Text> total, <Text code>{'{{6}}'}</Text> reception phone 1, <Text code>{'{{7}}'}</Text> reception phone 2.
         </Text>
         <Row gutter={12}>
           <Col span={15}>
@@ -232,6 +238,20 @@ function NotificationsTab() {
           <Col span={9}>
             <Form.Item name="guest_booking_template_lang" label="Language">
               <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>Reception Phones (used in guest template)</Text>
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.Item name="reception_phone_1" label="Reception Phone 1">
+              <Input placeholder="e.g. 76767769" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="reception_phone_2" label="Reception Phone 2">
+              <Input placeholder="e.g. 76767768" />
             </Form.Item>
           </Col>
         </Row>
