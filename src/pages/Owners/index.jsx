@@ -6,7 +6,7 @@ import {
   Popover, Tag, Spin, Select,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined, HomeOutlined } from '@ant-design/icons';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
@@ -18,6 +18,7 @@ const villaStatusColor = { available: 'green', occupied: 'orange', maintenance: 
 
 function VillasPopover({ owner }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data, isFetching } = useQuery({
     queryKey: ['owner-villas', owner.id],
@@ -36,8 +37,11 @@ function VillasPopover({ owner }) {
         (data.villas).map(v => (
           <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f0f0f0' }}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>
-                <HomeOutlined style={{ marginRight: 5, color: '#1677ff' }} />{v.name}
+              <div
+                style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#1677ff' }}
+                onClick={() => { setOpen(false); navigate('/villas', { state: { editVillaId: v.id } }); }}
+              >
+                <HomeOutlined style={{ marginRight: 5 }} />{v.name}
               </div>
               <div style={{ fontSize: 11, color: '#888' }}>
                 {v.num_rooms ? `${v.num_rooms} rooms` : ''}
@@ -183,8 +187,8 @@ export default function Owners() {
   }, [data, location.state?.editOwnerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns = [
-    { title: '#', dataIndex: 'id', width: 60, sorter: (a, b) => a.id - b.id },
-    { title: 'Name', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name), defaultSortOrder: 'ascend' },
+    { title: '#', dataIndex: 'id', width: 60 },
+    { title: 'Name', dataIndex: 'name' },
     { title: 'Phone', dataIndex: 'phone', render: v => v || '-' },
     {
       title: 'WhatsApp', dataIndex: 'whatsapp_number',
@@ -193,7 +197,7 @@ export default function Owners() {
         : '-',
     },
     { title: 'Email', dataIndex: 'email', render: v => v || '-' },
-    { title: 'Villas', dataIndex: 'villas_count', width: 80, sorter: (a, b) => a.villas_count - b.villas_count, render: (_, r) => <VillasPopover owner={r} /> },
+    { title: 'Villas', dataIndex: 'villas_count', width: 80, render: (_, r) => <VillasPopover owner={r} /> },
     {
       title: 'Actions', key: 'actions', render: (_, r) => (
         <Space>
