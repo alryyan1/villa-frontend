@@ -48,7 +48,7 @@ export default function Bookings() {
   const [filterGuest, setFilterGuest]   = useState(null);
   const [filterVilla, setFilterVilla]   = useState(null);
   const [filterDates, setFilterDates]   = useState(null);
-  const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null });
+  const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null, user: null });
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
@@ -73,7 +73,7 @@ export default function Bookings() {
     return () => clearToolbar();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({  
     queryKey: ['bookings', filterGuest, filterVilla, filterDates],
     queryFn: () => client.get('/bookings', {
       params: {
@@ -109,10 +109,10 @@ export default function Bookings() {
       setAvailability(null);
 
       if (!editing) {
-        setWaModal({ open: true, owner: null, tenant: null });
+        setWaModal({ open: true, owner: null, tenant: null, user: null });
         setTimeout(() => {
           const wa = res.data?.whatsapp ?? {};
-          setWaModal({ open: true, owner: wa.owner ?? null, tenant: wa.tenant ?? null });
+          setWaModal({ open: true, owner: wa.owner ?? null, tenant: wa.tenant ?? null, user: wa.user ?? null });
         }, 1000);
       }
     },
@@ -145,6 +145,16 @@ export default function Bookings() {
   const confirmDeparture = useMutation({
     mutationFn: (id) => client.post(`/bookings/${id}/confirm-departure`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['bookings'] }); message.success('Check-out confirmed.'); setActionRow(null); },
+    onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
+  });
+
+  const sendCheckoutReminder = useMutation({
+    mutationFn: (id) => client.post(`/bookings/${id}/send-checkout-reminder`).then(r => r.data),
+    onSuccess: (res) => {
+      if (res.sent) message.success('Checkout reminder sent.');
+      else message.error(res.error || 'Failed to send reminder.');
+      setActionRow(null);
+    },
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
 
@@ -578,6 +588,19 @@ export default function Bookings() {
                   </Button>
                 </Popconfirm>
               )}
+              {actionRow?.checked_in_at && !actionRow?.checked_out_at && (
+                <Tooltip title={!dayjs().isSame(dayjs(actionRow?.check_out), 'day') ? 'Only available on the checkout day' : ''}>
+                  <Button
+                    block
+                    icon={<WhatsAppOutlined />}
+                    loading={sendCheckoutReminder.isPending}
+                    disabled={!dayjs().isSame(dayjs(actionRow?.check_out), 'day')}
+                    onClick={() => sendCheckoutReminder.mutate(actionRow.id)}
+                  >
+                    Send Checkout Reminder
+                  </Button>
+                </Tooltip>
+              )}
               <Popconfirm
                 title="Delete this booking?"
                 onConfirm={() => { remove.mutate(actionRow.id); setActionRow(null); }}
@@ -759,11 +782,11 @@ export default function Bookings() {
         open={waModal.open}
         centered
         width={360}
-        closable={waModal.owner !== null || waModal.tenant !== null}
-        onCancel={() => setWaModal({ open: false, owner: null, tenant: null })}
+        closable={waModal.owner !== null || waModal.tenant !== null || waModal.user !== null}
+        onCancel={() => setWaModal({ open: false, owner: null, tenant: null, user: null })}
         footer={
-          (waModal.owner !== null || waModal.tenant !== null) ? (
-            <Button type="primary" onClick={() => setWaModal({ open: false, owner: null, tenant: null })}>
+          (waModal.owner !== null || waModal.tenant !== null || waModal.user !== null) ? (
+            <Button type="primary" onClick={() => setWaModal({ open: false, owner: null, tenant: null, user: null })}>
               Done
             </Button>
           ) : null
@@ -782,6 +805,7 @@ export default function Bookings() {
           {[
             { key: 'owner',  label: 'Owner' },
             { key: 'tenant', label: 'Tenant' },
+            { key: 'user',   label: 'You' },
           ].map(({ key, label }) => {
             const status = waModal[key];
             return (

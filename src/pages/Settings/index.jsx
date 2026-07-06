@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider, Select, Row, Col } from 'antd';
-import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -134,6 +134,10 @@ function NotificationsTab() {
       guest_booking_template_lang: data.guest_booking_template_lang ?? 'ar',
       reception_phone_1:           data.reception_phone_1           ?? '76767769',
       reception_phone_2:           data.reception_phone_2           ?? '76767768',
+      guest_checkout_reminder_template:      data.guest_checkout_reminder_template      ?? '',
+      guest_checkout_reminder_template_lang: data.guest_checkout_reminder_template_lang ?? 'ar',
+      owner_booking_template_has_button: data.owner_booking_template_has_button === '1',
+      guest_booking_template_has_button: data.guest_booking_template_has_button === '1',
     });
   }
 
@@ -220,6 +224,9 @@ function NotificationsTab() {
             </Form.Item>
           </Col>
         </Row>
+        <Form.Item name="owner_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
+        </Form.Item>
 
         <Text strong style={{ display: 'block', marginBottom: 4 }}>
           <WhatsAppOutlined style={{ color: '#25D366', marginRight: 6 }} />Guest Template
@@ -237,6 +244,28 @@ function NotificationsTab() {
           </Col>
           <Col span={9}>
             <Form.Item name="guest_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="guest_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
+        </Form.Item>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <ClockCircleOutlined style={{ color: '#fa8c16', marginRight: 6 }} />Checkout Reminder Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Params: <Text code>{'{{1}}'}</Text> guest name, <Text code>{'{{2}}'}</Text> villa. Sent manually per booking (fixed 10:15 AM wording).
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="guest_checkout_reminder_template" label="Template Name">
+              <Input placeholder="e.g. guest_checkout_reminder" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="guest_checkout_reminder_template_lang" label="Language">
               <Select options={LANG_OPTIONS} />
             </Form.Item>
           </Col>

@@ -282,7 +282,7 @@ export default function VillaMap() {
   const [statusFilter, setStatusFilter] = useState<'all' | VillaStatus>('all');
   const [contractOnly, setContractOnly] = useState(false);
   const [search, setSearch] = useState('');
-  const [asOf, setAsOf] = useState<Dayjs>(dayjs());
+  const [asOfRange, setAsOfRange] = useState<[Dayjs, Dayjs]>([dayjs(), dayjs()]);
   const [selectedVilla, setSelectedVilla] = useState<Villa | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
@@ -300,13 +300,15 @@ export default function VillaMap() {
   const { message } = App.useApp();
   const navigate = useNavigate();
 
-  const asOfStr = asOf.format('YYYY-MM-DD');
-  const isToday = asOf.isSame(dayjs(), 'day');
+  const asOfStartStr = asOfRange[0].format('YYYY-MM-DD');
+  const asOfEndStr   = asOfRange[1].format('YYYY-MM-DD');
+  const isSingleDay  = asOfRange[0].isSame(asOfRange[1], 'day');
+  const isToday      = isSingleDay && asOfRange[0].isSame(dayjs(), 'day');
 
   // ── All villas (polled every 30s when viewing today) ──────────────────────
   const { data: villasData, isLoading, isFetching } = useQuery<Villa[]>({
-    queryKey: ['villas-map', asOfStr],
-    queryFn: () => client.get('/villas', { params: { per_page: 999, as_of: asOfStr } }).then((r: any) => r.data.data),
+    queryKey: ['villas-map', asOfStartStr, asOfEndStr],
+    queryFn: () => client.get('/villas', { params: { per_page: 999, as_of_start: asOfStartStr, as_of_end: asOfEndStr } }).then((r: any) => r.data.data),
     refetchInterval: isToday ? 30_000 : false,
   });
 
@@ -433,14 +435,14 @@ export default function VillaMap() {
 
   const updateVillaStatus = useMutation({
     mutationFn: ({ id, status }: { id: number; status: VillaStatus }) => client.put(`/villas/${id}`, { status }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['villas-map', asOfStr] }); message.success('Villa status updated.'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['villas-map'] }); message.success('Villa status updated.'); },
     onError: () => message.error('Failed to update villa status.'),
   });
 
   const ctxConfirmArrival = useMutation({
     mutationFn: (id: number) => client.post(`/bookings/${id}/confirm-arrival`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['villas-map', asOfStr] });
+      qc.invalidateQueries({ queryKey: ['villas-map'] });
       qc.invalidateQueries({ queryKey: ['villa-bookings', selectedVilla?.id] });
       message.success('Arrival confirmed.');
     },
@@ -450,7 +452,7 @@ export default function VillaMap() {
   const ctxConfirmDeparture = useMutation({
     mutationFn: (id: number) => client.post(`/bookings/${id}/confirm-departure`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['villas-map', asOfStr] });
+      qc.invalidateQueries({ queryKey: ['villas-map'] });
       qc.invalidateQueries({ queryKey: ['villa-bookings', selectedVilla?.id] });
       message.success('Departure confirmed.');
     },
@@ -460,7 +462,7 @@ export default function VillaMap() {
   const quickPay = useMutation({
     mutationFn: ({ bookingId, vals }: { bookingId: number; vals: QuickPayFormValues }) => client.post(`/bookings/${bookingId}/payments`, vals),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['villas-map', asOfStr] });
+      qc.invalidateQueries({ queryKey: ['villas-map'] });
       message.success('Payment recorded.');
       setQuickPayVilla(null);
       quickPayForm.resetFields();
@@ -671,28 +673,29 @@ export default function VillaMap() {
           }} />
           Active ({stats.contractActive})
         </Button>
-        <DatePicker
+        <RangePicker
           size="small"
-          value={asOf}
-          onChange={d => d && setAsOf(d)}
+          value={asOfRange}
+          onChange={dates => dates?.[0] && dates?.[1] && setAsOfRange([dates[0], dates[1]])}
           format="DD MMM YYYY"
           allowClear={false}
-          style={{ width: 130 }}
+          placeholder={['Check-in', 'Check-out']}
+          style={{ width: 230 }}
           renderExtraFooter={() => (
             <div style={{ textAlign: 'center', padding: '4px 0' }}>
-              <Button size="small" type="link" onClick={() => setAsOf(dayjs())}>Today</Button>
+              <Button size="small" type="link" onClick={() => setAsOfRange([dayjs(), dayjs()])}>Today</Button>
             </div>
           )}
         />
         <Button
           size="small"
           icon={<ReloadOutlined spin={isFetching} />}
-          onClick={() => qc.invalidateQueries({ queryKey: ['villas-map', asOfStr] })}
+          onClick={() => qc.invalidateQueries({ queryKey: ['villas-map'] })}
         />
       </Space>
     );
     return () => clearToolbar();
-  }, [search, statusFilter, contractOnly, stats, isFetching, asOf, asOfStr]);
+  }, [search, statusFilter, contractOnly, stats, isFetching, asOfRange, asOfStartStr, asOfEndStr]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -703,9 +706,11 @@ export default function VillaMap() {
     );
   }
 
+  const rangeLabel = isSingleDay ? asOfRange[0].format('DD MMM') : `${asOfRange[0].format('DD MMM')} → ${asOfRange[1].format('DD MMM')}`;
+
   const LEGEND = [
-    { key: 'available', dot: '#52c41a', desc: `Available — no active booking on ${isToday ? 'today' : asOf.format('DD MMM')}` },
-    { key: 'occupied', dot: '#cf1322', desc: `Occupied — booking spans ${isToday ? 'today' : asOf.format('DD MMM')}` },
+    { key: 'available', dot: '#52c41a', desc: `Available — free for ${isToday ? 'today' : rangeLabel}` },
+    { key: 'occupied', dot: '#cf1322', desc: `Occupied — a booking overlaps ${isToday ? 'today' : rangeLabel}` },
     { key: 'maintenance', dot: '#531dab', desc: 'Maintenance — manually set by staff' },
   ];
 
@@ -719,9 +724,9 @@ export default function VillaMap() {
           style={{ marginBottom: 10 }}
           message={
             <span>
-              Viewing map for <strong>{asOf.format('dddd, DD MMM YYYY')}</strong>
-              {asOf.isBefore(dayjs(), 'day') ? ' — historical view' : ' — future view'}
-              . <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setAsOf(dayjs())}>Back to today</Button>
+              Viewing map for <strong>{isSingleDay ? asOfRange[0].format('dddd, DD MMM YYYY') : `${asOfRange[0].format('DD MMM YYYY')} → ${asOfRange[1].format('DD MMM YYYY')}`}</strong>
+              {asOfRange[1].isBefore(dayjs(), 'day') ? ' — historical view' : asOfRange[0].isAfter(dayjs(), 'day') ? ' — future view' : ' — spans today'}
+              . <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setAsOfRange([dayjs(), dayjs()])}>Back to today</Button>
             </span>
           }
         />

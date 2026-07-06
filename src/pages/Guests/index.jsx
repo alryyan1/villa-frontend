@@ -117,12 +117,12 @@ export default function Guests() {
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="phone" label="Phone">
+              <Form.Item name="phone" label="Phone" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="id_number" label="ID / Passport Number">
+              <Form.Item name="id_number" label="ID / Passport Number" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
