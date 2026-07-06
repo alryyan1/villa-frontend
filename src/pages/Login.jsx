@@ -3,6 +3,7 @@ import { Form, Input, Button, Typography, Alert } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
+import pkg from '../../package.json';
 
 const { Text } = Typography;
 
@@ -112,7 +113,7 @@ export default function Login() {
         </Form>
 
         <Text style={{ color: '#d1c5b4', fontSize: 12, marginTop: 44, textAlign: 'center', letterSpacing: 0.5 }}>
-          © {new Date().getFullYear()} Al Seef — All rights reserved
+          © {new Date().getFullYear()} Al Seef — All rights reserved · v{pkg.version.split('.').slice(0, 2).join('.')}
         </Text>
       </div>
 
