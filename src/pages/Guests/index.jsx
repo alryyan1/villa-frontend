@@ -8,6 +8,8 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined } from '@ant-d
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
+import CountryCodeSelect from '../../components/CountryCodeSelect';
+import { DEFAULT_PHONE_COUNTRY_CODE } from '../../data/countryDialCodes';
 
 const { TextArea } = Input;
 
@@ -67,7 +69,7 @@ export default function Guests() {
   const columns = [
     { title: '#', dataIndex: 'id', width: 60 },
     { title: 'Name', dataIndex: 'name' },
-    { title: 'Phone', dataIndex: 'phone', render: v => v || '-' },
+    { title: 'Phone', key: 'phone', render: (_, r) => r.phone ? `+${r.country_code || DEFAULT_PHONE_COUNTRY_CODE} ${r.phone}` : '-' },
     { title: 'ID / Passport', dataIndex: 'id_number', render: v => v || '-' },
     { title: 'Nationality', dataIndex: 'nationality', render: v => v || '-' },
     { title: 'Bookings', dataIndex: 'bookings_count', render: v => <Badge count={v} color="blue" showZero /> },
@@ -116,17 +118,20 @@ export default function Guests() {
             <Input />
           </Form.Item>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={7}>
+              <Form.Item name="country_code" label="Code" initialValue={DEFAULT_PHONE_COUNTRY_CODE}>
+                <CountryCodeSelect style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={17}>
               <Form.Item name="phone" label="Phone" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="id_number" label="ID / Passport Number" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
           </Row>
+          <Form.Item name="id_number" label="ID / Passport Number" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
           <Form.Item name="nationality" label="Nationality">
             <Input />
           </Form.Item>

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Drawer, Modal, Form, Select, DatePicker, Input, InputNumber, Button,
   Tag, Typography, Space, Alert, Spin, Tooltip, Dropdown,
-  Radio, App, Divider, Card, Empty, Row, Col,
+  Radio, App, Divider, Card, Empty, Row, Col, Avatar, Badge,
 } from 'antd';
 import type { InputRef, MenuProps } from 'antd';
 import {
@@ -13,6 +13,7 @@ import {
   SearchOutlined, AimOutlined, EyeOutlined,
   ToolOutlined, CheckCircleOutlined, CloseCircleOutlined,
   LoginOutlined, LogoutOutlined, WhatsAppOutlined,
+  ClockCircleOutlined, TeamOutlined, InfoCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -21,6 +22,8 @@ import { playSuccessChime } from '../../utils/sounds';
 import client from '../../api/client';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import CountryCodeSelect from '../../components/CountryCodeSelect';
+import { DEFAULT_PHONE_COUNTRY_CODE } from '../../data/countryDialCodes';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -48,6 +51,7 @@ interface Villa {
   price_per_night: number | string;
   notes?: string | null;
   contract_active?: boolean;
+  contract_end_date?: string | null;
   checking_in_today?: boolean;
   awaiting_arrival?: boolean;
   owner?: Owner | null;
@@ -56,6 +60,9 @@ interface Villa {
   active_booking_checked_out?: boolean;
   active_booking_guest?: string | null;
   active_booking_payment?: PaymentStatus | null;
+  active_booking_check_in?: string | null;
+  active_booking_check_out?: string | null;
+  monthly_bookings_count?: number;
 }
 
 interface Guest {
@@ -93,6 +100,7 @@ interface BookingFormValues {
 interface GuestFormValues {
   name: string;
   phone?: string;
+  country_code?: string;
   id_number?: string;
 }
 
@@ -125,6 +133,14 @@ interface WaModalState {
   tenant: WaStatus | null;
 }
 
+interface BookingConflict {
+  id: number;
+  guest_name: string | null;
+  check_in: string;
+  check_out: string;
+  status: BookingStatus;
+}
+
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CFG: Record<VillaStatus, { color: string; bg: string; border: string; label: string }> = {
   available: { color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f', label: 'Available' },
@@ -136,6 +152,29 @@ const UNCONFIGURED = { color: '#bfbfbf', bg: '#fafafa', border: '#d9d9d9', label
 const statusColors: Record<BookingStatus, string> = { confirmed: 'green', pending: 'orange', cancelled: 'red', completed: 'blue' };
 const payColors: Record<PaymentStatus, string> = { paid: 'green', partial: 'orange', unpaid: 'red' };
 const payLabels: Record<PaymentStatus, string> = { paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid' };
+
+// ─── Guest avatar helpers ──────────────────────────────────────────────────────
+const AVATAR_PALETTE = ['#cf1322', '#d4380d', '#d46b08', '#08979c', '#1d39c4', '#531dab', '#c41d7f'];
+function guestInitials(name?: string | null): string {
+  const parts = (name ?? '?').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return parts.slice(0, 2).map(p => p[0]!.toUpperCase()).join('');
+}
+function guestAvatarColor(name?: string | null): string {
+  const s = name ?? '?';
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+// ─── Contract status dot ──────────────────────────────────────────────────────
+function contractDotColor(villa?: Villa): string {
+  if (!villa?.contract_end_date) return '#bfbfbf';
+  const daysLeft = dayjs(villa.contract_end_date).startOf('day').diff(dayjs().startOf('day'), 'day');
+  if (daysLeft < 0) return '#cf1322';
+  if (daysLeft < 30) return '#faad14';
+  return '#52c41a';
+}
 
 // ─── Static map layout ────────────────────────────────────────────────────────
 // null = visual gap/separator
@@ -159,25 +198,48 @@ interface VillaTileProps {
   villa?: Villa;
   highlight: boolean;
   dimmed: boolean;
+  selected: boolean;
+  showBookingBadge: boolean;
   onClick: (villa: Villa) => void;
 }
 
-function VillaTile({ number, villa, highlight, dimmed, onClick }: VillaTileProps) {
+function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadge, onClick }: VillaTileProps) {
   if (number === null) return <div style={{ width: 18, flexShrink: 0 }} />;
   const checkingIn = villa?.checking_in_today;
   const awaitingArrival = villa?.awaiting_arrival;
+  const focused = highlight || selected;
   // console.log('VillaTile', 'number', number, 'villa', villa, 'highlight', highlight, 'dimmed', dimmed, 'checkingIn', checkingIn, 'awaitingArrival', awaitingArrival);
   const cfg = (villa?.status ? STATUS_CFG[villa.status] : undefined) ?? UNCONFIGURED;
 
+  // Stay progress: 0 on check-in day, 1 once check-out day is reached.
+  let stayProgress: number | null = null;
+  if (villa?.status === 'occupied' && villa.active_booking_check_in && villa.active_booking_check_out) {
+    const checkIn = dayjs(villa.active_booking_check_in).startOf('day');
+    const checkOut = dayjs(villa.active_booking_check_out).startOf('day');
+    const now = dayjs().startOf('day');
+    const totalNights = checkOut.diff(checkIn, 'day');
+    if (totalNights > 0) {
+      const elapsed = now.diff(checkIn, 'day');
+      stayProgress = Math.min(1, Math.max(0, elapsed / totalNights));
+    }
+  }
+
   return (
 
+    <Badge
+      count={showBookingBadge ? (villa?.monthly_bookings_count ?? 0) : 0}
+      size="small"
+      offset={[-6, 6]}
+      color="#1677ff"
+      title="Bookings this month"
+    >
     <button
       onClick={() => villa && onClick(villa)}
       style={{
         width: 54,
         height: 50,
         margin: 2,
-        border: `2px solid ${highlight ? '#1677ff' : awaitingArrival ? '#fa8c16' : cfg.border}`,
+        border: `2px solid ${focused ? '#1677ff' : awaitingArrival ? '#fa8c16' : cfg.border}`,
         borderRadius: 8,
         background: dimmed ? '#f5f5f5' : cfg.bg,
         color: dimmed ? '#d9d9d9' : cfg.color,
@@ -190,8 +252,8 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }: VillaTileProps
         fontWeight: 700,
         fontSize: 14,
         lineHeight: 1,
-        outline: highlight ? '3px solid rgba(22,119,255,0.35)' : 'none',
-        boxShadow: highlight
+        outline: focused ? '3px solid rgba(22,119,255,0.35)' : 'none',
+        boxShadow: focused
           ? '0 0 0 3px rgba(22,119,255,0.25), 0 3px 10px rgba(0,0,0,0.18)'
           : '0 1px 3px rgba(0,0,0,0.08)',
         animation: awaitingArrival ? 'heartbeat 1.6s ease-in-out infinite' : undefined,
@@ -200,18 +262,6 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }: VillaTileProps
         position: 'relative',
       }}
     >
-      {villa?.contract_active && (
-        <span style={{
-          position: 'absolute',
-          top: 2,
-          right: 3,
-          width: 7,
-          height: 7,
-          borderRadius: '50%',
-          background: '#52c41a',
-          boxShadow: '0 0 0 1.5px #fff',
-        }} />
-      )}
       {checkingIn && (
         <UserOutlined style={{
           position: 'absolute',
@@ -229,11 +279,35 @@ function VillaTile({ number, villa, highlight, dimmed, onClick }: VillaTileProps
           width: 8,
           height: 8,
           borderRadius: '50%',
-          background: cfg.color,
+          background: contractDotColor(villa),
           marginTop: 5,
         }} />
       )}
+      {stayProgress !== null && (
+        <Tooltip title={`Stay progress: ${Math.round(stayProgress * 100)}%`}>
+          <span style={{
+            position: 'absolute',
+            left: 3,
+            right: 3,
+            bottom: 3,
+            height: 3,
+            borderRadius: 2,
+            background: 'rgba(0,0,0,0.12)',
+            overflow: 'hidden',
+          }}>
+            <span style={{
+              display: 'block',
+              height: '100%',
+              width: `${stayProgress * 100}%`,
+              borderRadius: 2,
+              background: stayProgress >= 1 ? '#cf1322' : '#fa8c16',
+              transition: 'width 0.3s ease',
+            }} />
+          </span>
+        </Tooltip>
+      )}
     </button>
+    </Badge>
   );
 }
 
@@ -281,17 +355,21 @@ export default function VillaMap() {
   usePageTitle('Villa Map');
   const [statusFilter, setStatusFilter] = useState<'all' | VillaStatus>('all');
   const [contractOnly, setContractOnly] = useState(false);
+  const [showBookingBadge, setShowBookingBadge] = useState(() => localStorage.getItem('villaMap.showBookingBadge') !== 'false');
   const [search, setSearch] = useState('');
   const [asOfRange, setAsOfRange] = useState<[Dayjs, Dayjs]>([dayjs(), dayjs()]);
   const [selectedVilla, setSelectedVilla] = useState<Villa | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [availability, setAvailability] = useState<boolean | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [conflicts, setConflicts] = useState<BookingConflict[]>([]);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [form] = Form.useForm<BookingFormValues>();
   const [guestForm] = Form.useForm<GuestFormValues>();
   const [guestModalOpen, setGuestModalOpen] = useState(false);
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
   const datePickerRef = useRef<any>(null);
   const guestNameRef = useRef<InputRef>(null);
   const priceFieldRef = useRef<any>(null);
@@ -301,9 +379,9 @@ export default function VillaMap() {
   const navigate = useNavigate();
 
   const asOfStartStr = asOfRange[0].format('YYYY-MM-DD');
-  const asOfEndStr   = asOfRange[1].format('YYYY-MM-DD');
-  const isSingleDay  = asOfRange[0].isSame(asOfRange[1], 'day');
-  const isToday      = isSingleDay && asOfRange[0].isSame(dayjs(), 'day');
+  const asOfEndStr = asOfRange[1].format('YYYY-MM-DD');
+  const isSingleDay = asOfRange[0].isSame(asOfRange[1], 'day');
+  const isToday = isSingleDay && asOfRange[0].isSame(dayjs(), 'day');
 
   // ── All villas (polled every 30s when viewing today) ──────────────────────
   const { data: villasData, isLoading, isFetching } = useQuery<Villa[]>({
@@ -380,6 +458,9 @@ export default function VillaMap() {
   const checkAvailability = async () => {
     const { dates } = form.getFieldsValue(['dates']);
     if (!selectedVilla || !dates?.[0] || !dates?.[1]) return;
+    setAvailability(null);
+    setConflicts([]);
+    setCheckingAvailability(true);
     try {
       const res = await client.post('/bookings/check-availability', {
         villa_id: selectedVilla.id,
@@ -387,10 +468,14 @@ export default function VillaMap() {
         check_out: dates[1].format('YYYY-MM-DD'),
       });
       setAvailability(res.data.available);
+      setConflicts(res.data.conflicts ?? []);
       if (res.data.available) {
         setTimeout(() => { priceFieldRef.current?.focus(); priceFieldRef.current?.select?.(); }, 50);
       }
     } catch { }
+    finally {
+      setCheckingAvailability(false);
+    }
   };
 
   // ── Create booking ────────────────────────────────────────────────────────
@@ -403,12 +488,12 @@ export default function VillaMap() {
       setBookingModalOpen(false);
 
       form.resetFields();
-      setAvailability(null);
+      setAvailability(null); setConflicts([]);
       setWaModal({ open: true, owner: null, tenant: null });
       setTimeout(() => {
         const wa = res.data?.whatsapp ?? {};
-        const noPhone: WaStatus = { sent: false, error: 'No phone number' };
-        setWaModal({ open: true, owner: wa.owner ?? noPhone, tenant: wa.tenant ?? noPhone });
+        const unknown: WaStatus = { sent: false, error: 'No status returned' };
+        setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown });
       }, 1000);
     },
     onError: (e: any) => message.error(e.response?.data?.message || 'Failed to create booking.'),
@@ -488,7 +573,7 @@ export default function VillaMap() {
       items.push(
         {
           key: 'book', icon: <PlusOutlined />, label: 'New Booking',
-          onClick: () => { setSelectedVilla(villa); form.resetFields(); form.setFieldValue('price_per_night', Number(villa.price_per_night)); setBookingNights(0); setAvailability(null); setBookingModalOpen(true); }
+          onClick: () => { setSelectedVilla(villa); form.resetFields(); form.setFieldValue('price_per_night', Number(villa.price_per_night)); setBookingNights(0); setAvailability(null); setConflicts([]); setBookingModalOpen(true); }
         },
         {
           key: 'maint', icon: <ToolOutlined />, label: 'Set to Maintenance', danger: true,
@@ -521,10 +606,6 @@ export default function VillaMap() {
         {
           key: 'avail', icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />, label: 'Mark as Available',
           onClick: () => updateVillaStatus.mutate({ id: villa.id, status: 'available' })
-        },
-        {
-          key: 'book', icon: <PlusOutlined />, label: 'New Booking',
-          onClick: () => { setSelectedVilla(villa); form.resetFields(); form.setFieldValue('price_per_night', Number(villa.price_per_night)); setBookingNights(0); setAvailability(null); setBookingModalOpen(true); }
         },
       );
     }
@@ -563,11 +644,20 @@ export default function VillaMap() {
     setContractOnly(true);
   }, [])
 
+  const toggleBookingBadge = () => {
+    setShowBookingBadge(v => {
+      const next = !v;
+      localStorage.setItem('villaMap.showBookingBadge', String(next));
+      return next;
+    });
+  };
+
   // ── Tile helper ───────────────────────────────────────────────────────────
   const tile = (n: number | null): ReactNode => {
     if (n === null) return <div key="gap" style={{ width: 18 }} />;
     const villa = villaByNumber[n];
     const highlight = !!(searchNum && searchNum === n);
+    const selected = !!(villa && selectedVilla?.id === villa.id);
     const dimmed = (statusFilter !== 'all' && villa?.status !== statusFilter)
       || (contractOnly && villa && !villa.contract_active) || false;
     return (
@@ -583,6 +673,8 @@ export default function VillaMap() {
             villa={villa}
             highlight={highlight}
             dimmed={dimmed}
+            selected={selected}
+            showBookingBadge={showBookingBadge}
             onClick={v => {
               // alert(`VillaTile clicked ${v.contract_active}`);
               if (v.contract_active === false) {
@@ -595,7 +687,12 @@ export default function VillaMap() {
               form.resetFields();
               form.setFieldValue('price_per_night', Number(v.price_per_night));
               setBookingNights(0);
-              setAvailability(null);
+              setAvailability(null); setConflicts([]);
+              if (v.status === 'maintenance') {
+                message.warning('Villa is under maintenance. Cannot create booking.');
+                setBookingModalOpen(false);
+                return;
+              }
               setBookingModalOpen(v?.status != 'occupied');
               // setOpenGuestModal(true);
               //open guest modal if villa is not occupied
@@ -635,7 +732,7 @@ export default function VillaMap() {
                 form.resetFields();
                 form.setFieldValue('price_per_night', Number(villa.price_per_night));
                 setBookingNights(0);
-                setAvailability(null);
+                setAvailability(null); setConflicts([]);
                 setBookingModalOpen(true);
               }
             }
@@ -733,7 +830,7 @@ export default function VillaMap() {
       )}
 
       {/* ── Legend ── */}
-      <div style={{ display: 'flex', gap: 24, marginBottom: 10, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 10, flexWrap: 'wrap' }}>
         {LEGEND.map(({ key, dot, desc }) => (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#595959' }}>
             <span style={{
@@ -743,6 +840,27 @@ export default function VillaMap() {
             {desc}
           </div>
         ))}
+        <Space style={{ marginLeft: 'auto' }}>
+          <Tooltip title="Show a badge with the bookings count per villa for the current month">
+            <Button
+              size="small"
+              type={showBookingBadge ? 'primary' : 'default'}
+              icon={<CalendarOutlined />}
+              onClick={toggleBookingBadge}
+            >
+              Monthly Bookings
+            </Button>
+          </Tooltip>
+          <Tooltip title="What do the colors, dots and badges mean?">
+            <Button
+              size="small"
+              icon={<InfoCircleOutlined />}
+              onClick={() => setLegendModalOpen(true)}
+            >
+              What do the tiles mean?
+            </Button>
+          </Tooltip>
+        </Space>
       </div>
 
       {/* ── Map ── */}
@@ -893,7 +1011,9 @@ export default function VillaMap() {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => { form.resetFields(); form.setFieldValue('price_per_night', Number(selectedVilla?.price_per_night)); setBookingNights(0); setAvailability(null); setBookingModalOpen(true); }}
+              disabled={selectedVilla?.status === 'maintenance'}
+              title={selectedVilla?.status === 'maintenance' ? 'Villa is under maintenance' : undefined}
+              onClick={() => { form.resetFields(); form.setFieldValue('price_per_night', Number(selectedVilla?.price_per_night)); setBookingNights(0); setAvailability(null); setConflicts([]); setBookingModalOpen(true); }}
             >
               New Booking
             </Button>
@@ -1192,22 +1312,24 @@ export default function VillaMap() {
                     }}
                   >
                     <div>
-                      <Text strong style={{ fontSize: 13 }}>
-                        <UserOutlined style={{ marginRight: 5, color: '#1677ff', fontSize: 11 }} />
+                      <Text strong style={{ fontSize: 14 }}>
+                        <UserOutlined style={{ marginRight: 5, color: '#1677ff', fontSize: 12 }} />
                         {b.guest?.name}
                       </Text>
-                      <div>
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          <CalendarOutlined style={{ marginRight: 3 }} />
-                          {dayjs(b.check_in).format('DD MMM')} → {dayjs(b.check_out).format('DD MMM YY')}
-                          <span style={{ color: '#1677ff', fontWeight: 600, marginLeft: 5 }}>{b.nights}n</span>
-                          {(b.num_guests ?? 1) > 1 && (
-                            <span style={{ marginLeft: 5 }}>· {b.num_guests} guests</span>
-                          )}
-                        </Text>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: '#434343' }}>
+                          <CalendarOutlined style={{ color: '#1677ff' }} />
+                          {dayjs(b.check_in).format('DD MMM')} → {dayjs(b.check_out).format('DD MMM YYYY')}
+                        </span>
+                        <Tag color="blue" style={{ margin: 0, fontSize: 12, fontWeight: 700 }}>{b.nights}n</Tag>
+                        {(b.num_guests ?? 1) > 1 && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#595959' }}>
+                            <TeamOutlined /> {b.num_guests}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <Tag color={statusColors[b.status]} style={{ margin: 0, fontSize: 11, flexShrink: 0 }}>{b.status}</Tag>
+                    <Tag color={statusColors[b.status]} style={{ margin: 0, fontSize: 12, flexShrink: 0 }}>{b.status}</Tag>
                   </div>
                 ))}
               </div>
@@ -1220,52 +1342,95 @@ export default function VillaMap() {
 
       {/* ── New Booking Modal ── */}
       <Modal
-        title={<Space><PlusOutlined /><span>New Booking — {selectedVilla?.name}</span></Space>}
+        title={
+          <Space size={8}>
+            <PlusOutlined />
+            <span>New Booking — {selectedVilla?.name}</span>
+            {selectedVilla && (
+              <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                {selectedVilla.category ?? '—'}
+                {selectedVilla.num_rooms ? ` · ${selectedVilla.num_rooms} rooms` : ''}
+                {' · OMR '}{Number(selectedVilla.price_per_night).toLocaleString(undefined, { minimumFractionDigits: 3 })}/night
+              </Text>
+            )}
+          </Space>
+        }
         open={bookingModalOpen}
-        onCancel={() => { setBookingModalOpen(false); form.resetFields(); setAvailability(null); }}
+        onCancel={() => { setBookingModalOpen(false); form.resetFields(); setAvailability(null); setConflicts([]); setCheckingAvailability(false); }}
         onOk={() => form.submit()}
         confirmLoading={createBooking.isPending}
-        width={460}
+        width={700}
         centered
         okText="Create Booking"
-        styles={{ body: { paddingTop: 12, paddingBottom: 4 } }}
+        okButtonProps={{ icon: <PlusOutlined />, disabled: availability === false || checkingAvailability, loading: checkingAvailability }}
+        styles={{ body: { paddingTop: 12, paddingBottom: 0 } }}
       >
         <Form form={form} layout="vertical" onFinish={onBookingFinish} size="small">
-          <Form.Item name="guest_id" label="Guest" rules={[{ required: true, message: 'Select a guest' }]} style={{ marginBottom: 10 }}>
-            <Select
-              placeholder="Search guest…"
-              showSearch
-              optionFilterProp="children"
-              onChange={() => setTimeout(() => setDatePickerOpen(true), 100)}
-              dropdownRender={menu => (
-                <>
-                  {menu}
-                  <Divider style={{ margin: '4px 0' }} />
-                  <div style={{ padding: '4px 8px 6px' }}>
-                    <Button
-                      type="link"
-                      icon={<PlusOutlined />}
-                      size="small"
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => setGuestModalOpen(true)}
-                    >
-                      New Guest
-                    </Button>
-                  </div>
-                </>
-              )}
-            >
-              {(guests || []).map(g => (
-                <Select.Option key={g.id} value={g.id}>
-                  {g.name}{g.phone ? ` — ${g.phone}` : ''}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+          <Row gutter={10}>
+            <Col span={14}>
+              <Form.Item name="guest_id" label="Guest" rules={[{ required: true, message: 'Select a guest' }]} style={{ marginBottom: 8 }}>
+                <Select
+                  placeholder="Search guest by name or phone…"
+                  showSearch
+                  optionFilterProp="children"
+                  suffixIcon={<UserOutlined />}
+                  onChange={() => setTimeout(() => setDatePickerOpen(true), 100)}
+                  dropdownRender={menu => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: '4px 0' }} />
+                      <div style={{ padding: '4px 8px 6px' }}>
+                        <Button
+                          type="link"
+                          icon={<PlusOutlined />}
+                          size="small"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => setGuestModalOpen(true)}
+                        >
+                          New Guest
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                >
+                  {(guests || []).map(g => (
+                    <Select.Option key={g.id} value={g.id}>
+                      {g.name}{g.phone ? ` — ${g.phone}` : ''}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={4}>
+              <Form.Item name="num_guests" label="Guests" rules={[{ required: true }]} initialValue={1} style={{ marginBottom: 8 }}>
+                <InputNumber min={1} max={50} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="status" label="Status" initialValue="confirmed" style={{ marginBottom: 8 }}>
+                <Select>
+                  <Select.Option value="confirmed">
+                    <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#52c41a', marginRight: 7 }} />
+                    Confirmed
+                  </Select.Option>
+                  <Select.Option value="pending">
+                    <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#fa8c16', marginRight: 7 }} />
+                    Pending
+                  </Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Row gutter={10} style={{ marginBottom: 0 }}>
-            <Col span={15}>
-              <Form.Item name="dates" label="Dates" rules={[{ required: true, message: 'Select dates' }]} style={{ marginBottom: 10 }}>
+          <Row gutter={10}>
+            <Col span={10}>
+              <Form.Item
+                name="dates"
+                label="Dates"
+                rules={[{ required: true, message: 'Select dates' }]}
+                style={{ marginBottom: 8 }}
+                extra={bookingNights > 0 ? `${bookingNights} night${bookingNights > 1 ? 's' : ''}` : undefined}
+              >
                 <RangePicker
                   ref={datePickerRef}
                   style={{ width: '100%' }}
@@ -1276,9 +1441,9 @@ export default function VillaMap() {
                 />
               </Form.Item>
             </Col>
-            <Col span={9}>
-              <Form.Item name="check_in_time" label="Check-in Time" style={{ marginBottom: 10 }}>
-                <Select placeholder="Time" allowClear>
+            <Col span={5}>
+              <Form.Item name="check_in_time" label="Check-in Time" style={{ marginBottom: 8 }}>
+                <Select placeholder="Time" allowClear suffixIcon={<ClockCircleOutlined />}>
                   <Select.Option value="10:00">10:00 AM</Select.Option>
                   <Select.Option value="11:00">11:00 AM</Select.Option>
                   <Select.Option value="12:00">12:00 PM</Select.Option>
@@ -1287,21 +1452,15 @@ export default function VillaMap() {
                 </Select>
               </Form.Item>
             </Col>
-          </Row>
-
-          {availability === true && <Alert message="Available ✓" type="success" showIcon style={{ marginBottom: 10, padding: '4px 10px' }} />}
-          {availability === false && <Alert message="Already booked for these dates — pick different dates." type="error" showIcon style={{ marginBottom: 10, padding: '4px 10px' }} />}
-
-          <Row gutter={10} align="bottom">
-            <Col span={12}>
+            <Col span={4}>
               <Form.Item
                 name="price_per_night"
-                label="Price / Night (OMR)"
+                label="Price / Night"
                 rules={[
                   { required: true, message: 'Required' },
-                  { type: 'number', min: 0.001, message: 'Price must be greater than zero' },
+                  { type: 'number', min: 0.001, message: '> 0' },
                 ]}
-                style={{ marginBottom: 10 }}
+                style={{ marginBottom: 8 }}
               >
                 <InputNumber
                   ref={priceFieldRef}
@@ -1313,40 +1472,77 @@ export default function VillaMap() {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item label="Total" style={{ marginBottom: 10 }}>
+            <Col span={5}>
+              <Form.Item label="Total" style={{ marginBottom: 8 }}>
                 <div style={{
-                  padding: '4px 11px', border: '1px solid #d9d9d9', borderRadius: 6,
-                  background: '#fafafa', fontWeight: 700, fontSize: 14, color: '#4a3000',
-                  lineHeight: '30px',
+                  padding: '0 10px', border: '1px solid #ffe7ba', borderRadius: 6,
+                  background: '#fffbf0', height: 24, display: 'flex', alignItems: 'center',
                 }}>
-                  {bookingNights > 0
-                    ? `OMR ${((bookingPrice || form.getFieldValue('price_per_night') || 0) * bookingNights).toLocaleString(undefined, { minimumFractionDigits: 3 })}`
-                    : <span style={{ color: '#bbb', fontWeight: 400 }}>select dates</span>
-                  }
+                  {bookingNights > 0 ? (
+                    <span style={{ fontWeight: 700, fontSize: 13, color: '#874d00' }}>
+                      OMR {((bookingPrice || form.getFieldValue('price_per_night') || 0) * bookingNights).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#bbb', fontSize: 12 }}>—</span>
+                  )}
                 </div>
               </Form.Item>
             </Col>
           </Row>
 
-          <Row gutter={10}>
-            <Col span={9}>
-              <Form.Item name="num_guests" label="Guests" rules={[{ required: true }]} initialValue={1} style={{ marginBottom: 10 }}>
-                <InputNumber min={1} max={50} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={15}>
-              <Form.Item name="status" label="Status" initialValue="confirmed" style={{ marginBottom: 10 }}>
-                <Select>
-                  <Select.Option value="confirmed">Confirmed</Select.Option>
-                  <Select.Option value="pending">Pending</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+          {checkingAvailability && (
+            <Alert
+              message={<Space size={8}><Spin size="small" />Checking availability…</Space>}
+              type="info"
+              style={{ marginBottom: 8, padding: '4px 10px' }}
+            />
+          )}
+          {!checkingAvailability && availability === true && <Alert message="Villa is available for these dates" type="success" showIcon style={{ marginBottom: 8, padding: '4px 10px' }} />}
+          {!checkingAvailability && availability === false && (
+            <div style={{ marginBottom: 8 }}>
+              <Alert
+                type="error"
+                showIcon
+                style={{ padding: '6px 10px', marginBottom: conflicts.length > 0 ? 6 : 0 }}
+                message="Already booked for these dates — pick different dates."
+              />
+              {conflicts.map(c => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 12px', marginBottom: 6,
+                    background: '#fff1f0', border: '1px solid #ffccc7', borderRadius: 8,
+                  }}
+                >
+                  <Avatar
+                    size={38}
+                    style={{ background: guestAvatarColor(c.guest_name), fontWeight: 700, flexShrink: 0 }}
+                  >
+                    {guestInitials(c.guest_name)}
+                  </Avatar>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: '#820014' }}>
+                        {c.guest_name ?? 'Unknown guest'}
+                      </span>
+                      <Text type="secondary" style={{ fontSize: 11 }}>#{c.id}</Text>
+                      <Tag color={statusColors[c.status]} style={{ margin: 0 }}>{c.status}</Tag>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                      <CalendarOutlined style={{ color: '#cf1322' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#5c0011' }}>
+                        {dayjs(c.check_in).format('DD MMM')} → {dayjs(c.check_out).format('DD MMM YYYY')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <Form.Item name="notes" label="Notes" style={{ marginBottom: 4 }}>
-            <Input.TextArea rows={2} />
+            <Input.TextArea rows={1} placeholder="Optional notes about this booking…" />
           </Form.Item>
         </Form>
       </Modal>
@@ -1373,7 +1569,12 @@ export default function VillaMap() {
             />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col span={8}>
+              <Form.Item name="country_code" label="Code" initialValue={DEFAULT_PHONE_COUNTRY_CODE}>
+                <CountryCodeSelect style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={16}>
               <Form.Item name="phone" label="Phone">
                 <Input
                   id="guest-phone"
@@ -1381,15 +1582,15 @@ export default function VillaMap() {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="id_number" label="Civil / National ID">
-                <Input
-                  id="guest-id"
-                  placeholder="ID number"
-                  onPressEnter={() => guestForm.submit()}
-                />
-              </Form.Item>
-            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Form.Item name="id_number" label="Civil / National ID">
+              <Input
+                id="guest-id"
+                placeholder="ID number"
+                onPressEnter={() => guestForm.submit()}
+              />
+            </Form.Item>
           </Row>
         </Form>
       </Modal>
@@ -1552,6 +1753,101 @@ export default function VillaMap() {
         ) : (
           <div style={{ textAlign: 'center', color: '#bfbfbf', padding: '24px 0' }}>No owner assigned</div>
         )}
+      </Modal>
+
+      {/* ── Legend / Help Modal ── */}
+      <Modal
+        open={legendModalOpen}
+        onCancel={() => setLegendModalOpen(false)}
+        footer={<Button type="primary" onClick={() => setLegendModalOpen(false)}>Got it</Button>}
+        title={<Space><InfoCircleOutlined /><span>Villa Tile Legend</span></Space>}
+        width={540}
+        centered
+      >
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', paddingTop: 8 }}>
+          {/* Sketch */}
+          <div style={{ flexShrink: 0, textAlign: 'center' }}>
+            <Badge count={7} size="small" offset={[-6, 6]} color="#1677ff">
+              <div style={{
+                width: 54, height: 50, border: '2px solid #b7eb8f', borderRadius: 8,
+                background: '#f6ffed', color: '#52c41a', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14,
+                position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+              }}>
+                <UserOutlined style={{ position: 'absolute', top: 3, left: 4, fontSize: 10, color: '#52c41a', opacity: 0.85 }} />
+                101
+                <span style={{ display: 'block', width: 8, height: 8, borderRadius: '50%', background: '#faad14', marginTop: 5 }} />
+                <span style={{ position: 'absolute', left: 3, right: 3, bottom: 3, height: 3, borderRadius: 2, background: 'rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+                  <span style={{ display: 'block', height: '100%', width: '60%', borderRadius: 2, background: '#fa8c16' }} />
+                </span>
+              </div>
+            </Badge>
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>Sample tile</Text>
+          </div>
+
+          {/* Explanations */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
+            <div>
+              <Text strong style={{ fontSize: 12 }}>Tile color / border — villa status</Text>
+              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {LEGEND.map(({ key, dot, desc }) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#595959' }}>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                    {desc}
+                  </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#595959' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#bfbfbf', flexShrink: 0 }} />
+                  Not configured — villa has no status set
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Text strong style={{ fontSize: 12 }}><UserOutlined style={{ marginRight: 5 }} />Person icon (top-left)</Text>
+              <div style={{ color: '#595959', marginTop: 2 }}>Guest is checking in today</div>
+            </div>
+
+            <div>
+              <Text strong style={{ fontSize: 12 }}>Pulsing border</Text>
+              <div style={{ color: '#595959', marginTop: 2 }}>Check-in date is today but the guest hasn't arrived yet</div>
+            </div>
+
+            <div>
+              <Text strong style={{ fontSize: 12 }}>Center dot — contract status</Text>
+              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#595959' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#52c41a', flexShrink: 0 }} />
+                  More than 30 days left on the contract
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#595959' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#faad14', flexShrink: 0 }} />
+                  Contract expires within 30 days
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#595959' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#cf1322', flexShrink: 0 }} />
+                  Contract has expired
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#595959' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#bfbfbf', flexShrink: 0 }} />
+                  No contract dates set
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Text strong style={{ fontSize: 12 }}>Blue number badge (top-right)</Text>
+              <div style={{ color: '#595959', marginTop: 2 }}>
+                Bookings created for this villa in the current month — toggle on/off with the "Monthly Bookings" button
+              </div>
+            </div>
+
+            <div>
+              <Text strong style={{ fontSize: 12 }}>Bottom progress bar</Text>
+              <div style={{ color: '#595959', marginTop: 2 }}>Stay progress — how far along the current booking is between check-in and check-out</div>
+            </div>
+          </div>
+        </div>
       </Modal>
     </div>
   );

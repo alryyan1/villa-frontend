@@ -210,14 +210,13 @@ export default function Owners() {
 
   return (
     <div>
-
-      <Card>
-        <Space style={{ marginBottom: 16 }} wrap>
+      <Card size="small" styles={{ body: { padding: 12 } }}>
+        <Space style={{ marginBottom: 8 }} size="small" wrap>
           <Input.Search
             placeholder="Search by name or phone..."
-            onSearch={v => { setSearch(v); setPage(1); }}
-            onChange={e => { if (!e.target.value) { setSearch(''); setPage(1); } }}
-            style={{ width: 280 }}
+            onSearch={v => setSearch(v)}
+            onChange={e => { if (!e.target.value) setSearch(''); }}
+            style={{ width: 260 }}
             allowClear
           />
           <Select
@@ -227,11 +226,12 @@ export default function Owners() {
             optionFilterProp="label"
             style={{ width: 180 }}
             value={filterVilla}
-            onChange={v => { setFilterVilla(v ?? null); setPage(1); }}
+            onChange={v => setFilterVilla(v ?? null)}
             options={(villasData ?? []).map(v => ({ value: v.id, label: v.name }))}
           />
         </Space>
         <Table
+          size="small"
           dataSource={data}
           columns={columns}
           rowKey="id"
@@ -283,35 +283,35 @@ export default function Owners() {
         confirmLoading={save.isPending}
         width={600}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <Row gutter={16}>
+        <Form form={form} layout="vertical" size="small" onFinish={(v) => save.mutate(v)}>
+          <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="name" label="Full Name" rules={[{ required: true }]}>
+              <Form.Item name="name" label="Full Name" rules={[{ required: true }]} style={{ marginBottom: 10 }}>
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="phone" label="Phone">
+              <Form.Item name="phone" label="Phone" style={{ marginBottom: 10 }}>
                 <Input />
               </Form.Item>
             </Col>
           </Row>
-          <Row gutter={16}>
+          <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="whatsapp_number" label="WhatsApp Number">
+              <Form.Item name="whatsapp_number" label="WhatsApp Number" style={{ marginBottom: 10 }}>
                 <Input placeholder="966xxxxxxxxx" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
+              <Form.Item name="email" label="Email" rules={[{ type: 'email' }]} style={{ marginBottom: 10 }}>
                 <Input />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="address" label="Address">
+          <Form.Item name="address" label="Address" style={{ marginBottom: 10 }}>
             <Input />
           </Form.Item>
-          <Form.Item name="notes" label="Notes">
+          <Form.Item name="notes" label="Notes" style={{ marginBottom: 0 }}>
             <TextArea rows={2} />
           </Form.Item>
         </Form>

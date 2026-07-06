@@ -132,12 +132,15 @@ function NotificationsTab() {
       owner_booking_template_lang: data.owner_booking_template_lang ?? 'ar',
       guest_booking_template:      data.guest_booking_template      ?? '',
       guest_booking_template_lang: data.guest_booking_template_lang ?? 'ar',
+      guest_pending_booking_template:      data.guest_pending_booking_template      ?? '',
+      guest_pending_booking_template_lang: data.guest_pending_booking_template_lang ?? 'ar',
       reception_phone_1:           data.reception_phone_1           ?? '76767769',
       reception_phone_2:           data.reception_phone_2           ?? '76767768',
       guest_checkout_reminder_template:      data.guest_checkout_reminder_template      ?? '',
       guest_checkout_reminder_template_lang: data.guest_checkout_reminder_template_lang ?? 'ar',
       owner_booking_template_has_button: data.owner_booking_template_has_button === '1',
       guest_booking_template_has_button: data.guest_booking_template_has_button === '1',
+      guest_pending_booking_template_has_button: data.guest_pending_booking_template_has_button === '1',
     });
   }
 
@@ -189,6 +192,24 @@ function NotificationsTab() {
             checkedChildren="Enabled"
             unCheckedChildren="Disabled"
             onChange={(checked) => mutate({ tenant_notifications_enabled: checked })}
+          />
+        </Descriptions.Item>
+        <Descriptions.Item
+          label={
+            <span>
+              Booking Confirmation Notifications
+              <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
+                Send WhatsApp to guest &amp; owner when a pending booking is confirmed
+              </div>
+            </span>
+          }
+        >
+          <Switch
+            checked={data?.booking_confirmation_notify_enabled !== '0'}
+            loading={isPending}
+            checkedChildren="Enabled"
+            unCheckedChildren="Disabled"
+            onChange={(checked) => mutate({ booking_confirmation_notify_enabled: checked })}
           />
         </Descriptions.Item>
       </Descriptions>
@@ -249,6 +270,31 @@ function NotificationsTab() {
           </Col>
         </Row>
         <Form.Item name="guest_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
+        </Form.Item>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <WhatsAppOutlined style={{ color: '#fa8c16', marginRight: 6 }} />Pending Booking Guest Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Sent instead of the Guest Template above when the booking is created with status <Text code>pending</Text>.{' '}
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,{' '}
+          <Text code>{'{{5}}'}</Text> total, <Text code>{'{{6}}'}</Text> reception phone 1, <Text code>{'{{7}}'}</Text> reception phone 2.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="guest_pending_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_guest_pending" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="guest_pending_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="guest_pending_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
           <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
         </Form.Item>
 

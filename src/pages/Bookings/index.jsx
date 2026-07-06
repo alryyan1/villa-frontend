@@ -44,6 +44,7 @@ export default function Bookings() {
   const [editing, setEditing]           = useState(null);
   const [selected, setSelected]         = useState(null);
   const [availability, setAvailability] = useState(null);
+  const [conflicts, setConflicts] = useState([]);
   const [selectedVillaRooms, setSelectedVillaRooms] = useState(null);
   const [filterGuest, setFilterGuest]   = useState(null);
   const [filterVilla, setFilterVilla]   = useState(null);
@@ -65,7 +66,7 @@ export default function Bookings() {
     setToolbar(
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <Space><CalendarOutlined /><span style={{ fontWeight: 600 }}>Booking Management</span></Space>
-        {/* <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAvailability(null); setModalOpen(true); }}>
+        {/* <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAvailability(null); setConflicts([]); setModalOpen(true); }}>
           New Booking
         </Button> */}
       </div>
@@ -106,13 +107,14 @@ export default function Bookings() {
       setModalOpen(false);
       form.resetFields();
       setEditing(null);
-      setAvailability(null);
+      setAvailability(null); setConflicts([]);
 
       if (!editing) {
         setWaModal({ open: true, owner: null, tenant: null, user: null });
         setTimeout(() => {
           const wa = res.data?.whatsapp ?? {};
-          setWaModal({ open: true, owner: wa.owner ?? null, tenant: wa.tenant ?? null, user: wa.user ?? null });
+          const unknown = { sent: false, error: 'No status returned' };
+          setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown });
         }, 1000);
       }
     },
@@ -134,6 +136,24 @@ export default function Bookings() {
       setPayModalOpen(false);
     },
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
+  });
+
+  const confirmBooking = useMutation({
+    mutationFn: (id) => client.post(`/bookings/${id}/confirm`).then(r => r.data),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      message.success('Booking confirmed.');
+      setActionRow(null);
+      if (res.notified) {
+        setWaModal({ open: true, owner: null, tenant: null, user: null });
+        setTimeout(() => {
+          const wa = res.whatsapp ?? {};
+          const unknown = { sent: false, error: 'No status returned' };
+          setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown });
+        }, 1000);
+      }
+    },
+    onError: (e) => message.error(e.response?.data?.message || 'Failed to confirm booking.'),
   });
 
   const confirmArrival = useMutation({
@@ -175,6 +195,7 @@ export default function Bookings() {
         booking_id: editing?.id,
       });
       setAvailability(res.data.available);
+      setConflicts(res.data.conflicts ?? []);
     } catch {}
   };
 
@@ -196,7 +217,7 @@ export default function Bookings() {
       status:        record.status,
       notes:         record.notes,
     });
-    setAvailability(null);
+    setAvailability(null); setConflicts([]);
     setModalOpen(true);
   };
 
@@ -394,20 +415,43 @@ export default function Bookings() {
     },
     {
       title: 'In / Out', key: 'inout', width: 100,
-      render: (_, r) => (
-        <Space size={4}>
-          <Tooltip title={r.checked_in_at ? `Checked in: ${dayjs(r.checked_in_at).format('DD MMM HH:mm')}` : 'Not yet checked in'}>
-            <Tag icon={<LoginOutlined />} color={r.checked_in_at ? 'success' : 'default'} style={{ marginRight: 0, fontSize: 11, cursor: 'default' }}>
-              IN
-            </Tag>
-          </Tooltip>
-          <Tooltip title={r.checked_out_at ? `Checked out: ${dayjs(r.checked_out_at).format('DD MMM HH:mm')}` : 'Not yet checked out'}>
-            <Tag icon={<LogoutOutlined />} color={r.checked_out_at ? 'error' : 'default'} style={{ marginRight: 0, fontSize: 11, cursor: 'default' }}>
-              OUT
-            </Tag>
-          </Tooltip>
-        </Space>
-      ),
+      render: (_, r) => {
+        if (r.status === 'pending') {
+          return (
+            <Popconfirm
+              title="Confirm this booking?"
+              description="Marks it as confirmed and notifies the guest & owner via WhatsApp."
+              onConfirm={(e) => { e?.stopPropagation?.(); confirmBooking.mutate(r.id); }}
+              onCancel={(e) => e?.stopPropagation?.()}
+              okText="Confirm"
+              cancelText="Cancel"
+            >
+              <Button
+                size="small"
+                type="primary"
+                loading={confirmBooking.isPending && confirmBooking.variables === r.id}
+                onClick={e => e.stopPropagation()}
+              >
+                Confirm
+              </Button>
+            </Popconfirm>
+          );
+        }
+        return (
+          <Space size={4}>
+            <Tooltip title={r.checked_in_at ? `Checked in: ${dayjs(r.checked_in_at).format('DD MMM HH:mm')}` : 'Not yet checked in'}>
+              <Tag icon={<LoginOutlined />} color={r.checked_in_at ? 'success' : 'default'} style={{ marginRight: 0, fontSize: 11, cursor: 'default' }}>
+                IN
+              </Tag>
+            </Tooltip>
+            <Tooltip title={r.checked_out_at ? `Checked out: ${dayjs(r.checked_out_at).format('DD MMM HH:mm')}` : 'Not yet checked out'}>
+              <Tag icon={<LogoutOutlined />} color={r.checked_out_at ? 'error' : 'default'} style={{ marginRight: 0, fontSize: 11, cursor: 'default' }}>
+                OUT
+              </Tag>
+            </Tooltip>
+          </Space>
+        );
+      },
     },
     { title: 'Total', dataIndex: 'total_amount', render: v => `${Number(v).toLocaleString()} OMR` },
     {
@@ -558,7 +602,20 @@ export default function Bookings() {
               <Button block icon={<DollarOutlined />} onClick={() => { setSelected(actionRow); setPayModalOpen(true); setActionRow(null); }}>
                 Add Payment
               </Button>
-              {!actionRow?.checked_in_at && !['cancelled', 'completed'].includes(actionRow?.status) && (
+              {actionRow?.status === 'pending' && (
+                <Popconfirm
+                  title="Confirm this booking?"
+                  description="Marks it as confirmed and notifies the guest & owner via WhatsApp."
+                  onConfirm={() => confirmBooking.mutate(actionRow.id)}
+                  okText="Confirm"
+                  cancelText="Cancel"
+                >
+                  <Button block type="primary" loading={confirmBooking.isPending}>
+                    Confirm Booking
+                  </Button>
+                </Popconfirm>
+              )}
+              {actionRow?.status === 'confirmed' && !actionRow?.checked_in_at && (
                 <Popconfirm
                   title="Confirm guest check-in?"
                   onConfirm={() => confirmArrival.mutate(actionRow.id)}
@@ -619,7 +676,7 @@ export default function Bookings() {
       <Modal
         title={editing ? 'Edit Booking' : 'New Booking'}
         open={modalOpen}
-        onCancel={() => { setModalOpen(false); setEditing(null); form.resetFields(); setAvailability(null); setSelectedVillaRooms(null); }}
+        onCancel={() => { setModalOpen(false); setEditing(null); form.resetFields(); setAvailability(null); setConflicts([]); setSelectedVillaRooms(null); }}
         onOk={() => form.submit()}
         confirmLoading={save.isPending}
         width={620}
@@ -675,7 +732,23 @@ export default function Bookings() {
           </Form.Item>
 
           {availability === true  && <Alert message="Villa is available for the selected dates ✓" type="success" style={{ marginBottom: 12 }} />}
-          {availability === false && <Alert message="Villa is already booked for this period — choose different dates." type="error" style={{ marginBottom: 12 }} />}
+          {availability === false && (
+            <Alert
+              type="error"
+              style={{ marginBottom: 12 }}
+              message="Villa is already booked for this period — choose different dates."
+              description={conflicts.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {conflicts.map(c => (
+                    <div key={c.id} style={{ fontSize: 12 }}>
+                      #{c.id} — {c.guest_name ?? 'Unknown guest'} · {dayjs(c.check_in).format('DD MMM')} → {dayjs(c.check_out).format('DD MMM YYYY')}
+                      <Tag color={statusColors[c.status]} style={{ marginLeft: 6 }}>{c.status}</Tag>
+                    </div>
+                  ))}
+                </div>
+              )}
+            />
+          )}
 
           <Form.Item name="status" label="Status" initialValue="confirmed">
             <Select>
