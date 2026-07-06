@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Table, DatePicker, Button, Typography, Progress, Row, Col, Statistic, Spin } from 'antd';
+import { Card, Table, DatePicker, Button, Typography, Progress, Row, Col, Statistic, Spin, Modal } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import dayjs from 'dayjs';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
 
-const { Title } = Typography;
+const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 export default function OccupancyReport() {
   usePageTitle('Occupancy Report');
   const [dates, setDates] = useState([dayjs().startOf('month'), dayjs().endOf('month')]);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['report-occupancy', dates],
@@ -41,13 +43,54 @@ export default function OccupancyReport() {
 
   return (
     <div>
-      <Title level={4}>Occupancy Report</Title>
+      <Row align="middle" gutter={8} style={{ marginBottom: 4 }}>
+        <Col><Title level={4} style={{ margin: 0 }}>Occupancy Report</Title></Col>
+        <Col>
+          <Button
+            type="text"
+            size="small"
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setHelpOpen(true)}
+          >
+            Explain this report
+          </Button>
+        </Col>
+      </Row>
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={16} align="middle">
           <Col><RangePicker value={dates} onChange={setDates} /></Col>
           <Col><Button type="primary" onClick={refetch} loading={isLoading}>Refresh</Button></Col>
         </Row>
       </Card>
+
+      <Modal
+        title="About the Occupancy Report"
+        open={helpOpen}
+        onCancel={() => setHelpOpen(false)}
+        footer={<Button type="primary" onClick={() => setHelpOpen(false)}>Got it</Button>}
+        width={560}
+      >
+        <Paragraph>
+          This report shows how heavily each villa is booked over the selected date range, based on recorded bookings.
+        </Paragraph>
+        <Paragraph>
+          <Text strong>Booked Nights:</Text> the number of nights the villa was actually booked within the selected period.
+        </Paragraph>
+        <Paragraph>
+          <Text strong>Total Days:</Text> the total number of days in the selected period (from start date to end date).
+        </Paragraph>
+        <Paragraph>
+          <Text strong>Bookings:</Text> the number of separate bookings made for this villa during the period.
+        </Paragraph>
+        <Paragraph>
+          <Text strong>Occupancy Rate:</Text> calculated as Booked Nights ÷ Total Days × 100. The higher the rate, the more the villa was utilized.
+          <br />
+          <Text type="success">Green</Text> = occupancy above 70%, <Text type="warning">Orange</Text> = between 40% and 70%, <Text type="danger">Red</Text> = below 40%.
+        </Paragraph>
+        <Paragraph>
+          <Text strong>Average Occupancy:</Text> the average occupancy rate across all villas for the selected period.
+        </Paragraph>
+      </Modal>
 
       {isLoading ? <Spin /> : (
         <>

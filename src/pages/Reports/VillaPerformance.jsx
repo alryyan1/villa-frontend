@@ -28,6 +28,7 @@ export default function VillaPerformance() {
     { title: 'Cancellations', dataIndex: 'cancelled_bookings', render: v => <Tag color="red">{v}</Tag> },
     { title: 'Nights', dataIndex: 'total_nights' },
     { title: 'Revenue', dataIndex: 'total_revenue', render: v => `OMR ${Number(v || 0).toLocaleString()}`, sorter: (a, b) => a.total_revenue - b.total_revenue },
+    { title: 'Collected', dataIndex: 'total_collected', render: v => `OMR ${Number(v || 0).toLocaleString()}`, sorter: (a, b) => a.total_collected - b.total_collected },
   ];
 
   const chartData = (data?.data || []).slice(0, 10).map(v => ({

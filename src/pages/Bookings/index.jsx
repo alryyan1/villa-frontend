@@ -65,9 +65,9 @@ export default function Bookings() {
     setToolbar(
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <Space><CalendarOutlined /><span style={{ fontWeight: 600 }}>Booking Management</span></Space>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAvailability(null); setModalOpen(true); }}>
+        {/* <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAvailability(null); setModalOpen(true); }}>
           New Booking
-        </Button>
+        </Button> */}
       </div>
     );
     return () => clearToolbar();
@@ -542,7 +542,7 @@ export default function Bookings() {
               <Button block icon={<UnorderedListOutlined />} style={{ color: '#8B6914', borderColor: '#C9A96E' }} onClick={() => { openConfirmation(actionRow); setActionRow(null); }}>
                 View Confirmation PDF
               </Button>
-              <Button block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
+              <Button disabled block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
                 Edit Booking
               </Button>
               <Button block icon={<DollarOutlined />} onClick={() => { setSelected(actionRow); setPayModalOpen(true); setActionRow(null); }}>

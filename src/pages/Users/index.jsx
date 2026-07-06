@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Select, Space,
-  Popconfirm, Card, Row, Col, App, Tag, Switch,
+  Table, Button, Modal, Form, Input, Space,
+  Popconfirm, Card, Row, Col, App, Switch, Checkbox, Divider, Typography,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
 import client from '../../api/client';
 import { useAuth } from '../../store/AuthContext';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
+import { ALL_PAGE_KEYS } from '../../config/navPages';
 
-const { Option } = Select;
-
-const roleColors = { admin: 'red', manager: 'orange', staff: 'blue' };
-const roleLabels = { admin: 'Admin', manager: 'Manager', staff: 'Staff' };
+const { Text } = Typography;
+const ALL_PAGE_VALUES = ALL_PAGE_KEYS.map((p) => p.key);
 
 export default function Users() {
   usePageTitle('Users');
@@ -69,7 +68,7 @@ export default function Users() {
 
   const openEdit = (record) => {
     setEditing(record);
-    form.setFieldsValue({ ...record, password: '' });
+    form.setFieldsValue({ ...record, password: '', permissions: record.permissions ?? ALL_PAGE_VALUES });
     setModalOpen(true);
   };
 
@@ -78,7 +77,6 @@ export default function Users() {
     { title: 'Name', dataIndex: 'name' },
     { title: 'Email', dataIndex: 'email' },
     { title: 'Phone', dataIndex: 'phone', render: v => v || '-' },
-    { title: 'Role', dataIndex: 'role', render: r => <Tag color={roleColors[r]}>{roleLabels[r]}</Tag> },
     {
       title: 'Status', dataIndex: 'is_active',
       render: (v, r) => (
@@ -124,44 +122,63 @@ export default function Users() {
         onCancel={() => { setModalOpen(false); setEditing(null); form.resetFields(); }}
         onOk={() => form.submit()}
         confirmLoading={save.isPending}
-        width={500}
+        width={520}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => {
+        <Form form={form} layout="vertical" size="small" onFinish={(v) => {
           if (!v.password) delete v.password;
           save.mutate(v);
         }}>
-          <Row gutter={16}>
+          <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="name" label="Full Name" rules={[{ required: true }]}>
+              <Form.Item name="name" label="Full Name" rules={[{ required: true }]} style={{ marginBottom: 10 }}>
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="phone" label="Phone">
+              <Form.Item name="phone" label="Phone" style={{ marginBottom: 10 }}>
                 <Input />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label={editing ? 'Password (leave blank to keep current)' : 'Password'}
-            rules={editing ? [] : [{ required: true, min: 8 }]}
-          >
-            <Input.Password />
-          </Form.Item>
-          <Form.Item name="role" label="Role" initialValue="staff">
-            <Select>
-              <Option value="admin">Admin</Option>
-              <Option value="manager">Manager</Option>
-              <Option value="staff">Staff</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="is_active" label="Status" valuePropName="checked" initialValue={true}>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]} style={{ marginBottom: 10 }}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="password"
+                label={editing ? 'Password (blank = unchanged)' : 'Password'}
+                rules={editing ? [] : [{ required: true, min: 8 }]}
+                style={{ marginBottom: 10 }}
+              >
+                <Input.Password />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="is_active" label="Status" valuePropName="checked" initialValue={true} style={{ marginBottom: 4 }}>
             <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
           </Form.Item>
+
+          <Divider style={{ margin: '8px 0' }} orientation="left" orientationMargin={0}>
+            <Text style={{ fontSize: 12 }} type="secondary">Visible Pages</Text>
+          </Divider>
+          {editing?.role === 'admin' ? (
+            <Text type="secondary">Admins always have access to every page.</Text>
+          ) : (
+            <Form.Item name="permissions" initialValue={ALL_PAGE_VALUES} style={{ marginBottom: 0 }}>
+              <Checkbox.Group style={{ width: '100%' }}>
+                <Row gutter={[8, 4]}>
+                  {ALL_PAGE_KEYS.map((p) => (
+                    <Col span={8} key={p.key}>
+                      <Checkbox value={p.key}>{p.label}</Checkbox>
+                    </Col>
+                  ))}
+                </Row>
+              </Checkbox.Group>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>

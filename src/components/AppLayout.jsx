@@ -1,44 +1,21 @@
-import { useState, useEffect } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Typography, theme, Tooltip, Badge } from 'antd';
+import { useState, useEffect, useMemo } from 'react';
+import { Layout, Avatar, Dropdown, Typography, theme, Tooltip, Badge } from 'antd';
+import { Sidebar, Menu, MenuItem, SubMenu } from 'react-pro-sidebar';
 import { useQuery } from '@tanstack/react-query';
 import client from '../api/client';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
-  DashboardOutlined, HomeOutlined, UserOutlined, TeamOutlined,
-  CalendarOutlined, BarChartOutlined, LogoutOutlined, MenuFoldOutlined,
-  MenuUnfoldOutlined, FileTextOutlined, SettingOutlined, AimOutlined, ToolOutlined,
-  BulbOutlined, BulbFilled, BuildOutlined,
+  LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, BulbOutlined, BulbFilled,
 } from '@ant-design/icons';
 import { useAuth } from '../store/AuthContext';
 import { HeaderToolbarProvider, useHeaderToolbar } from '../store/HeaderToolbarContext';
 import { useTheme } from '../store/ThemeContext';
+import { canAccessPage } from '../utils/permissions';
+import { menuItems as allMenuItems } from '../config/navPages';
 import NotificationBell from './NotificationBell';
 
-const { Sider, Header, Content } = Layout;
+const { Header, Content } = Layout;
 const { Text } = Typography;
-
-const menuItems = [
-  { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
-  { key: '/villas', icon: <HomeOutlined />, label: 'Villas' },
-  { key: '/map', icon: <AimOutlined />, label: 'Villa Map' },
-  { key: '/owners', icon: <TeamOutlined />, label: 'Owners' },
-  { key: '/bookings', icon: <CalendarOutlined />, label: 'Bookings' },
-  { key: '/guests', icon: <UserOutlined />, label: 'Guests' },
-  {
-    key: 'reports', icon: <BarChartOutlined />, label: 'Reports',
-    children: [
-      { key: '/reports/occupancy', label: 'Occupancy Report' },
-      { key: '/reports/revenue', label: 'Revenue Report' },
-      { key: '/reports/villa-performance', label: 'Villa Performance' },
-      { key: '/reports/user-performance', label: 'User Performance' },
-      { key: '/reports/payment-methods', label: 'Payment Methods' },
-    ],
-  },
-  { key: '/maintenance', icon: <BuildOutlined />, label: 'Maintenance' },
-  { key: '/users', icon: <SettingOutlined />, label: 'Users' },
-  { key: '/activity-logs', icon: <FileTextOutlined />, label: 'Activity Log' },
-  { key: '/settings', icon: <ToolOutlined />, label: 'Settings' },
-];
 
 function AppLayoutInner() {
   const [collapsed, setCollapsed] = useState(false);
@@ -68,11 +45,18 @@ function AppLayoutInner() {
     retry: false,
   });
 
+  const menuItems = useMemo(() => allMenuItems
+    .map((item) => item.children
+      ? { ...item, children: item.children.filter((c) => canAccessPage(user, c.key)) }
+      : item)
+    .filter((item) => item.children ? item.children.length > 0 : canAccessPage(user, item.key)),
+  [user]);
+
   const selectedKey = menuItems
     .flatMap(i => i.children ?? [i])
     .find(i => location.pathname === i.key)?.key ?? '/';
 
-  const openKeys = location.pathname.startsWith('/reports') ? ['reports'] : [];
+  const reportsOpen = location.pathname.startsWith('/reports');
 
   const userMenu = {
     items: [
@@ -82,13 +66,18 @@ function AppLayoutInner() {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
-      <Sider
-        trigger={null}
-        collapsible
+    <div style={{ display: 'flex', minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
+      <Sidebar
         collapsed={collapsed}
-        width={220}
-        style={{ background: token.colorBgContainer, borderRight: `1px solid ${token.colorBorderSecondary}` }}
+        width="220px"
+        collapsedWidth="64px"
+        backgroundColor={token.colorBgContainer}
+        rootStyles={{
+          border: 'none',
+          borderRight: `1px solid ${token.colorBorderSecondary}`,
+          userSelect: 'none',
+          color: token.colorText,
+        }}
       >
         <div style={{ padding: '16px', textAlign: 'center', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
           <Text strong style={{ fontSize: collapsed ? 12 : 16 }}>
@@ -96,14 +85,40 @@ function AppLayoutInner() {
           </Text>
         </div>
         <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          defaultOpenKeys={openKeys}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 'none' }}
-        />
-      </Sider>
+          menuItemStyles={{
+            button: ({ active }) => ({
+              backgroundColor: active ? token.colorPrimaryBg : undefined,
+              color: active ? token.colorPrimary : token.colorText,
+              '&:hover': { backgroundColor: token.colorFillTertiary },
+            }),
+          }}
+        >
+          {menuItems.map((item) => (
+            item.children ? (
+              <SubMenu key={item.key} label={item.label} icon={item.icon} defaultOpen={reportsOpen}>
+                {item.children.map((child) => (
+                  <MenuItem
+                    key={child.key}
+                    active={selectedKey === child.key}
+                    onClick={() => navigate(child.key)}
+                  >
+                    {child.label}
+                  </MenuItem>
+                ))}
+              </SubMenu>
+            ) : (
+              <MenuItem
+                key={item.key}
+                icon={item.icon}
+                active={selectedKey === item.key}
+                onClick={() => navigate(item.key)}
+              >
+                {item.label}
+              </MenuItem>
+            )
+          ))}
+        </Menu>
+      </Sidebar>
 
       <Layout>
         <Header style={{
@@ -158,7 +173,7 @@ function AppLayoutInner() {
           <Outlet />
         </Content>
       </Layout>
-    </Layout>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, Select, InputNumber,
@@ -99,6 +99,24 @@ export default function Villas() {
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
 
+  const priceInputRefs = useRef([]);
+  const [priceEdits, setPriceEdits] = useState({});
+
+  const updatePrice = useMutation({
+    mutationFn: ({ id, price_per_night }) => client.put(`/villas/${id}`, { price_per_night }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['villas'] });
+      qc.invalidateQueries({ queryKey: ['villas-map'] });
+    },
+    onError: (e) => message.error(e.response?.data?.message || 'Failed to update price.'),
+  });
+
+  const commitPrice = (record) => {
+    const val = priceEdits[record.id];
+    if (val == null || Number(val) === Number(record.price_per_night)) return;
+    updatePrice.mutate({ id: record.id, price_per_night: val });
+  };
+
   const handleCategoryChange = (val) => {
     const type = VILLA_TYPES.find(t => t.value === val);
     if (type) form.setFieldValue('num_rooms', type.defaultRooms);
@@ -135,7 +153,32 @@ export default function Villas() {
         ? <Tag color={categoryColor[v] ?? 'default'}>{v}</Tag>
         : <span style={{ color: '#bfbfbf' }}>—</span>,
     },
-    { title: 'Price/Night', dataIndex: 'price_per_night', render: v => `OMR ${Number(v).toLocaleString()}`, sorter: (a, b) => a.price_per_night - b.price_per_night },
+    {
+      title: 'Price/Night', dataIndex: 'price_per_night',
+      sorter: (a, b) => a.price_per_night - b.price_per_night,
+      render: (v, r, index) => (
+        <InputNumber
+          size="small"
+          controls={false}
+          min={0}
+          prefix="OMR"
+          style={{ width: 100 }}
+          value={priceEdits[r.id] ?? v}
+          ref={el => { priceInputRefs.current[index] = el; }}
+          onFocus={e => e.target.select()}
+          onChange={val => setPriceEdits(prev => ({ ...prev, [r.id]: val }))}
+          onBlur={() => commitPrice(r)}
+          onPressEnter={() => {
+            commitPrice(r);
+            const next = priceInputRefs.current[index + 1];
+            if (next) {
+              next.focus();
+              next.select();
+            }
+          }}
+        />
+      ),
+    },
     {
       width: 200,
       title: 'Contract Period', key: 'contract_period',
@@ -306,7 +349,7 @@ export default function Villas() {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="contract_monthly_value" label="Monthly Value (OMR)" style={{ marginBottom: 10 }}>
+              <Form.Item name="contract_monthly_value" label=" Value (OMR)" style={{ marginBottom: 10 }}>
                 <InputNumber min={0} style={{ width: '100%' }} placeholder="0.000" />
               </Form.Item>
             </Col>
