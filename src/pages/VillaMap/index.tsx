@@ -279,7 +279,7 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
         <Tooltip title="Balance remaining">
           <DollarOutlined style={{
             position: 'absolute',
-            top: 3,
+            bottom: stayProgress !== null ? 8 : 3,
             right: 4,
             fontSize: 10,
             color: '#fa8c16',
