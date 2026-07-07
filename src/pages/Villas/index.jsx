@@ -290,8 +290,14 @@ export default function Villas() {
         <Form form={form} layout="vertical" size="small" onFinish={(v) => save.mutate(v)} style={{ paddingTop: 4 }}>
           <Row gutter={12}>
             <Col span={13}>
-              <Form.Item name="name" label="Name" rules={[{ required: true }]} style={{ marginBottom: 10 }}>
-                <Input placeholder="e.g. 101/01/RHRS" />
+              <Form.Item
+                name="name"
+                label="Name"
+                rules={[{ required: true }]}
+                style={{ marginBottom: 10 }}
+                tooltip={editing ? 'Villa name cannot be changed after creation.' : undefined}
+              >
+                <Input placeholder="e.g. 101/01/RHRS" disabled={!!editing} />
               </Form.Item>
             </Col>
             <Col span={7}>

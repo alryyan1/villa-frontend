@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider, Select, Row, Col } from 'antd';
-import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined, FileProtectOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -348,6 +348,52 @@ function NotificationsTab() {
   );
 }
 
+function BookingRulesTab() {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => client.get('/settings').then(r => r.data),
+  });
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (values) => client.put('/settings', values).then(r => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      message.success('Settings saved.');
+    },
+    onError: () => message.error('Failed to save settings.'),
+  });
+
+  if (isLoading) return <Skeleton active paragraph={{ rows: 2 }} />;
+
+  return (
+    <div style={{ maxWidth: 540 }}>
+      <Descriptions column={1} bordered>
+        <Descriptions.Item
+          label={
+            <span>
+              Enforce Contract End Date
+              <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
+                Block bookings whose checkout date is after the villa's management contract end date
+              </div>
+            </span>
+          }
+        >
+          <Switch
+            checked={data?.enforce_contract_end_date !== '0'}
+            loading={isPending}
+            checkedChildren="Enabled"
+            unCheckedChildren="Disabled"
+            onChange={(checked) => mutate({ enforce_contract_end_date: checked })}
+          />
+        </Descriptions.Item>
+      </Descriptions>
+    </div>
+  );
+}
+
 function TestWhatsApp() {
   const { message } = App.useApp();
   const [phone, setPhone] = useState('');
@@ -384,6 +430,7 @@ const tabs = [
   { key: 'profile',       label: <span><UserOutlined /> Profile</span>,           children: <ProfileTab /> },
   { key: 'password',      label: <span><LockOutlined /> Change Password</span>,   children: <PasswordTab /> },
   { key: 'notifications', label: <span><BellOutlined /> Notifications</span>,     children: <NotificationsTab /> },
+  { key: 'booking-rules', label: <span><FileProtectOutlined /> Booking Rules</span>, children: <BookingRulesTab /> },
 ];
 
 export default function Settings() {

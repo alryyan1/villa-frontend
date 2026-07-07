@@ -618,7 +618,7 @@ export default function VillaMap() {
   const [waModal, setWaModal] = useState<WaModalState>({ open: false, owner: null, tenant: null });
 
   const onBookingFinish = (vals: BookingFormValues) => {
-    if (!selectedVilla) return;
+    if (!selectedVilla || createBooking.isPending) return;
     createBooking.mutate({
       villa_id: selectedVilla.id,
       guest_id: vals.guest_id,
@@ -1362,7 +1362,11 @@ export default function VillaMap() {
         width={700}
         centered
         okText="Create Booking"
-        okButtonProps={{ icon: <PlusOutlined />, disabled: availability === false || checkingAvailability, loading: checkingAvailability }}
+        okButtonProps={{
+          icon: <PlusOutlined />,
+          disabled: availability === false || checkingAvailability || createBooking.isPending,
+          loading: checkingAvailability || createBooking.isPending,
+        }}
         styles={{ body: { paddingTop: 12, paddingBottom: 0 } }}
       >
         <Form form={form} layout="vertical" onFinish={onBookingFinish} size="small">
