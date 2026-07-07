@@ -16,9 +16,7 @@ client.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('villa_token');
-      localStorage.removeItem('villa_user');
-      window.location.href = '/#/login';
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
     return Promise.reject(err);
   }

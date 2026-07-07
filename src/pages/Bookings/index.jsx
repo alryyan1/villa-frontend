@@ -596,7 +596,7 @@ export default function Bookings() {
               <Button block icon={<UnorderedListOutlined />} style={{ color: '#8B6914', borderColor: '#C9A96E' }} onClick={() => { openConfirmation(actionRow); setActionRow(null); }}>
                 View Confirmation PDF
               </Button>
-              <Button disabled block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
+              <Button  block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
                 Edit Booking
               </Button>
               <Button block icon={<DollarOutlined />} onClick={() => { setSelected(actionRow); setPayModalOpen(true); setActionRow(null); }}>
@@ -616,22 +616,24 @@ export default function Bookings() {
                 </Popconfirm>
               )}
               {actionRow?.status === 'confirmed' && !actionRow?.checked_in_at && (
-                <Popconfirm
-                  title="Confirm guest check-in?"
-                  onConfirm={() => confirmArrival.mutate(actionRow.id)}
-                  okText="Yes"
-                  cancelText="No"
-                  disabled={dayjs().startOf('day').isBefore(dayjs(actionRow?.check_in).startOf('day'))}
-                >
-                  <Button
-                    block
-                    icon={<LoginOutlined />}
+                <Tooltip title={dayjs().startOf('day').isBefore(dayjs(actionRow?.check_in).startOf('day')) ? `Only available from the check-in date (${dayjs(actionRow.check_in).format('DD MMM YYYY')})` : ''}>
+                  <Popconfirm
+                    title="Confirm guest check-in?"
+                    onConfirm={() => confirmArrival.mutate(actionRow.id)}
+                    okText="Yes"
+                    cancelText="No"
                     disabled={dayjs().startOf('day').isBefore(dayjs(actionRow?.check_in).startOf('day'))}
-                    style={{ background: '#f6ffed', borderColor: '#52c41a', color: '#389e0d' }}
                   >
-                    Confirm Check-in
-                  </Button>
-                </Popconfirm>
+                    <Button
+                      block
+                      icon={<LoginOutlined />}
+                      disabled={dayjs().startOf('day').isBefore(dayjs(actionRow?.check_in).startOf('day'))}
+                      style={{ background: '#f6ffed', borderColor: '#52c41a', color: '#389e0d' }}
+                    >
+                      Confirm Check-in
+                    </Button>
+                  </Popconfirm>
+                </Tooltip>
               )}
               {actionRow?.checked_in_at && !actionRow?.checked_out_at && (
                 <Popconfirm

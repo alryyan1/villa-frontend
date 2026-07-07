@@ -27,6 +27,17 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const forceLogout = useCallback(() => {
+    localStorage.removeItem('villa_token');
+    localStorage.removeItem('villa_user');
+    setUser(null);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('auth:unauthorized', forceLogout);
+    return () => window.removeEventListener('auth:unauthorized', forceLogout);
+  }, [forceLogout]);
+
   useEffect(() => {
     if (!user) return;
 
