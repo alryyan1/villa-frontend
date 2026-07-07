@@ -212,6 +212,24 @@ function NotificationsTab() {
             onChange={(checked) => mutate({ booking_confirmation_notify_enabled: checked })}
           />
         </Descriptions.Item>
+        <Descriptions.Item
+          label={
+            <span>
+              Firebase PDF Upload
+              <div style={{ fontSize: 12, color: '#888', fontWeight: 400 }}>
+                Generate the confirmation PDF and upload it to Firebase Storage on create/update/confirm. Disable to speed up booking saves if this isn't needed.
+              </div>
+            </span>
+          }
+        >
+          <Switch
+            checked={data?.firebase_upload_enabled !== '0'}
+            loading={isPending}
+            checkedChildren="Enabled"
+            unCheckedChildren="Disabled"
+            onChange={(checked) => mutate({ firebase_upload_enabled: checked })}
+          />
+        </Descriptions.Item>
       </Descriptions>
 
       <Divider orientation="left" style={{ marginTop: 24 }}>

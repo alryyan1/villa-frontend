@@ -12,6 +12,47 @@
   50%           { transform: rotate(-6deg); }
 }
 
+@keyframes arrowBounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(4px); }
+}
+
+@keyframes ripple {
+  0%   { transform: scale(0.6); opacity: 0.6; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.arrival-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.arrival-badge::before,
+.arrival-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid #52c41a;
+  animation: ripple 1.6s ease-out infinite;
+}
+
+.arrival-badge::after {
+  animation-delay: 0.5s;
+}
+
+.arrival-badge .anticon {
+  position: relative;
+  z-index: 1;
+  color: #52c41a;
+  font-size: 12px;
+  animation: arrowBounce 1s ease-in-out infinite;
+}
+
 @keyframes heartbeat {
   0%          { transform: scale(1);    box-shadow: 0 0 0 0   rgba(250,140,22,0.55); }
   14%         { transform: scale(1.06); box-shadow: 0 0 0 5px rgba(250,140,22,0.3);  }

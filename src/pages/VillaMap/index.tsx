@@ -81,6 +81,7 @@ interface Booking {
   checked_out_at?: string | null;
   nights: number;
   total_amount: number | string;
+  paid_amount?: number | string;
   payment_status: PaymentStatus;
   notes?: string | null;
   num_guests?: number | null;
@@ -108,6 +109,7 @@ interface QuickPayFormValues {
   amount: number;
   method: PaymentMethod;
   notes?: string;
+  payment_date?: string;
 }
 
 interface CreateBookingPayload {
@@ -208,6 +210,7 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
   const checkingIn = villa?.checking_in_today;
   const awaitingArrival = villa?.awaiting_arrival;
   const focused = highlight || selected;
+  const hasBalanceDue = villa?.status === 'occupied' && !!villa.active_booking_payment && villa.active_booking_payment !== 'paid';
   // console.log('VillaTile', 'number', number, 'villa', villa, 'highlight', highlight, 'dimmed', dimmed, 'checkingIn', checkingIn, 'awaitingArrival', awaitingArrival);
   const cfg = (villa?.status ? STATUS_CFG[villa.status] : undefined) ?? UNCONFIGURED;
 
@@ -271,6 +274,17 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
           color: cfg.color,
           opacity: 0.85,
         }} />
+      )}
+      {hasBalanceDue && (
+        <Tooltip title="Balance remaining">
+          <DollarOutlined style={{
+            position: 'absolute',
+            top: 3,
+            right: 4,
+            fontSize: 10,
+            color: '#fa8c16',
+          }} />
+        </Tooltip>
       )}
       {number}
       {villa && (
@@ -1180,6 +1194,22 @@ export default function VillaMap() {
                   )}
                 </div>
 
+                {/* Paid / Remaining */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 12 }}>
+                    <Text type="secondary">Paid: </Text>
+                    <Text strong style={{ color: '#389e0d' }}>
+                      OMR {Number(currentBooking.paid_amount ?? 0).toLocaleString()}
+                    </Text>
+                  </Text>
+                  <Text style={{ fontSize: 12 }}>
+                    <Text type="secondary">Remaining: </Text>
+                    <Text strong style={{ color: '#cf1322' }}>
+                      OMR {Math.max(0, Number(currentBooking.total_amount) - Number(currentBooking.paid_amount ?? 0)).toLocaleString()}
+                    </Text>
+                  </Text>
+                </div>
+
                 {/* Check-in / Check-out actions */}
                 <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
                   <Button
@@ -1202,6 +1232,23 @@ export default function VillaMap() {
                     style={{ flex: 1 }}
                   >
                     Check Out
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<DollarOutlined />}
+                    disabled={currentBooking.payment_status === 'paid'}
+                    onClick={() => selectedVilla && setQuickPayVilla(selectedVilla)}
+                    style={{
+                      flex: 1,
+                      ...(currentBooking.payment_status === 'paid'
+                        ? {}
+                        : {
+                            background: '#fa8c16', borderColor: '#fa8c16', color: '#fff',
+                            animation: currentBooking.payment_status === 'unpaid' ? 'heartbeat 1.6s ease-in-out infinite' : undefined,
+                          }),
+                    }}
+                  >
+                    Add Payment
                   </Button>
                 </div>
               </div>
@@ -1688,7 +1735,10 @@ export default function VillaMap() {
         <Form
           form={quickPayForm}
           layout="vertical"
-          onFinish={vals => quickPayVilla?.active_booking_id && quickPay.mutate({ bookingId: quickPayVilla.active_booking_id, vals })}
+          onFinish={vals => quickPayVilla?.active_booking_id && quickPay.mutate({
+            bookingId: quickPayVilla.active_booking_id,
+            vals: { ...vals, payment_date: dayjs().format('YYYY-MM-DD') },
+          })}
         >
           <Row gutter={12}>
             <Col span={12}>

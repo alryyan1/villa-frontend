@@ -9,7 +9,7 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
   DollarOutlined, UnorderedListOutlined, LoginOutlined, LogoutOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, WhatsAppOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, WhatsAppOutlined, ArrowDownOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useLocation } from 'react-router-dom';
@@ -404,8 +404,15 @@ export default function Bookings() {
       title: 'Stay', key: 'stay', width: 150,
       render: (_, r) => (
         <div style={{ lineHeight: 1.4 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6, color: '#1f1f1f' }}>
             {dayjs(r.check_in).format('DD MMM')} → {dayjs(r.check_out).format('DD MMM')}
+            {dayjs(r.check_in).isSame(dayjs(), 'day') && !r.checked_in_at && (
+              <Tooltip title="Arriving today">
+                <span className="arrival-badge">
+                  <ArrowDownOutlined />
+                </span>
+              </Tooltip>
+            )}
           </div>
           <div style={{ fontSize: 11, color: '#8c8c8c' }}>
             {r.check_in_time ? `${r.check_in_time} · ` : ''}{r.nights}n · {r.num_guests ?? 1} guest{(r.num_guests ?? 1) > 1 ? 's' : ''}
