@@ -14,6 +14,7 @@ import {
   ToolOutlined, CheckCircleOutlined, CloseCircleOutlined,
   LoginOutlined, LogoutOutlined, WhatsAppOutlined,
   ClockCircleOutlined, TeamOutlined, InfoCircleOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -1181,34 +1182,67 @@ export default function VillaMap() {
                   </div>
                 </div>
 
-                {/* Financial */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontWeight: 700, fontSize: 15, color: '#4a3000' }}>
-                    <DollarOutlined style={{ marginRight: 4, color: '#fa8c16' }} />
-                    OMR {Number(currentBooking.total_amount).toLocaleString()}
-                  </Text>
-                  {currentBooking.notes && (
-                    <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {/* Financial summary: Total / Paid / Remaining */}
+                {(() => {
+                  const total = Number(currentBooking.total_amount);
+                  const paid = Number(currentBooking.paid_amount ?? 0);
+                  const remaining = Math.max(0, total - paid);
+                  const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+                  return (
+                    <div style={{
+                      background: 'rgba(255,255,255,0.7)', borderRadius: 8,
+                      padding: '9px 10px', marginBottom: 8,
+                      border: '1px solid rgba(0,0,0,0.06)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'stretch', marginBottom: 8 }}>
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Total</Text>
+                          <Text strong style={{ fontSize: 15, color: '#4a3000' }}>
+                            <DollarOutlined style={{ marginRight: 3, color: '#fa8c16', fontSize: 12 }} />
+                            OMR {total.toLocaleString()}
+                          </Text>
+                        </div>
+                        <div style={{ width: 1, background: 'rgba(0,0,0,0.06)' }} />
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Paid</Text>
+                          <Text strong style={{ fontSize: 15, color: '#389e0d' }}>OMR {paid.toLocaleString()}</Text>
+                        </div>
+                        <div style={{ width: 1, background: 'rgba(0,0,0,0.06)' }} />
+                        <div style={{ textAlign: 'center', flex: 1 }}>
+                          <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Remaining</Text>
+                          <Text strong style={{ fontSize: 15, color: remaining > 0 ? '#cf1322' : '#389e0d' }}>
+                            OMR {remaining.toLocaleString()}
+                          </Text>
+                        </div>
+                      </div>
+                      <div style={{ height: 6, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', width: `${pct}%`, borderRadius: 3,
+                          background: pct >= 100 ? '#52c41a' : '#fa8c16',
+                          transition: 'width 0.3s ease',
+                        }} />
+                      </div>
+                      <Text type="secondary" style={{ fontSize: 10, display: 'block', textAlign: 'right', marginTop: 3 }}>
+                        {pct}% paid
+                      </Text>
+                    </div>
+                  );
+                })()}
+
+                {/* Note (booking notes — NOT a payment figure) */}
+                {currentBooking.notes && (
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 6,
+                    background: '#fafafa', border: '1px dashed #d9d9d9',
+                    borderRadius: 6, padding: '5px 8px', marginBottom: 8,
+                  }}>
+                    <FileTextOutlined style={{ color: '#8c8c8c', fontSize: 12, marginTop: 2, flexShrink: 0 }} />
+                    <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic' }}>
+                      <Text type="secondary" style={{ fontSize: 11, fontStyle: 'normal', fontWeight: 700 }}>Note: </Text>
                       {currentBooking.notes}
                     </Text>
-                  )}
-                </div>
-
-                {/* Paid / Remaining */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 12 }}>
-                    <Text type="secondary">Paid: </Text>
-                    <Text strong style={{ color: '#389e0d' }}>
-                      OMR {Number(currentBooking.paid_amount ?? 0).toLocaleString()}
-                    </Text>
-                  </Text>
-                  <Text style={{ fontSize: 12 }}>
-                    <Text type="secondary">Remaining: </Text>
-                    <Text strong style={{ color: '#cf1322' }}>
-                      OMR {Math.max(0, Number(currentBooking.total_amount) - Number(currentBooking.paid_amount ?? 0)).toLocaleString()}
-                    </Text>
-                  </Text>
-                </div>
+                  </div>
+                )}
 
                 {/* Check-in / Check-out actions */}
                 <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
@@ -1321,18 +1355,59 @@ export default function VillaMap() {
                       </div>
                     </div>
 
-                    {/* Financial */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontWeight: 700, fontSize: 14, color: '#595959' }}>
-                        <DollarOutlined style={{ marginRight: 4, color: '#8c8c8c' }} />
-                        OMR {Number(lastBooking.total_amount).toLocaleString()}
-                      </Text>
-                      {lastBooking.notes && (
-                        <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {/* Financial summary: Total / Paid / Remaining */}
+                    {(() => {
+                      const total = Number(lastBooking.total_amount);
+                      const paid = Number(lastBooking.paid_amount ?? 0);
+                      const remaining = Math.max(0, total - paid);
+                      const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+                      return (
+                        <div style={{
+                          background: '#fff', borderRadius: 8, padding: '8px 10px',
+                          marginBottom: lastBooking.notes ? 8 : 0, border: '1px solid #f0f0f0',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'stretch', marginBottom: 6 }}>
+                            <div style={{ textAlign: 'center', flex: 1 }}>
+                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Total</Text>
+                              <Text strong style={{ fontSize: 13, color: '#595959' }}>OMR {total.toLocaleString()}</Text>
+                            </div>
+                            <div style={{ width: 1, background: '#f0f0f0' }} />
+                            <div style={{ textAlign: 'center', flex: 1 }}>
+                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Paid</Text>
+                              <Text strong style={{ fontSize: 13, color: '#389e0d' }}>OMR {paid.toLocaleString()}</Text>
+                            </div>
+                            <div style={{ width: 1, background: '#f0f0f0' }} />
+                            <div style={{ textAlign: 'center', flex: 1 }}>
+                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Remaining</Text>
+                              <Text strong style={{ fontSize: 13, color: remaining > 0 ? '#cf1322' : '#389e0d' }}>
+                                OMR {remaining.toLocaleString()}
+                              </Text>
+                            </div>
+                          </div>
+                          <div style={{ height: 5, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%', width: `${pct}%`, borderRadius: 3,
+                              background: pct >= 100 ? '#95de64' : '#d9d9d9',
+                            }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Note (booking notes — NOT a payment figure) */}
+                    {lastBooking.notes && (
+                      <div style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 6,
+                        background: '#fff', border: '1px dashed #d9d9d9',
+                        borderRadius: 6, padding: '5px 8px',
+                      }}>
+                        <FileTextOutlined style={{ color: '#8c8c8c', fontSize: 12, marginTop: 2, flexShrink: 0 }} />
+                        <Text type="secondary" style={{ fontSize: 11, fontStyle: 'italic' }}>
+                          <Text type="secondary" style={{ fontSize: 11, fontStyle: 'normal', fontWeight: 700 }}>Note: </Text>
                           {lastBooking.notes}
                         </Text>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1347,38 +1422,51 @@ export default function VillaMap() {
               <div style={{ textAlign: 'center' }}><Spin /></div>
             ) : upcomingBookings.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {upcomingBookings.map((b, idx) => (
-                  <div
-                    key={b.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '7px 10px', borderRadius: 7,
-                      background: idx === 0 ? '#f0f5ff' : '#fafafa',
-                      border: `1px solid ${idx === 0 ? '#adc6ff' : '#f0f0f0'}`,
-                      borderLeft: `3px solid ${b.status === 'confirmed' ? '#52c41a' : '#fa8c16'}`,
-                    }}
-                  >
-                    <div>
-                      <Text strong style={{ fontSize: 14 }}>
-                        <UserOutlined style={{ marginRight: 5, color: '#1677ff', fontSize: 12 }} />
-                        {b.guest?.name}
-                      </Text>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: '#434343' }}>
-                          <CalendarOutlined style={{ color: '#1677ff' }} />
-                          {dayjs(b.check_in).format('DD MMM')} → {dayjs(b.check_out).format('DD MMM YYYY')}
-                        </span>
-                        <Tag color="blue" style={{ margin: 0, fontSize: 12, fontWeight: 700 }}>{b.nights}n</Tag>
-                        {(b.num_guests ?? 1) > 1 && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#595959' }}>
-                            <TeamOutlined /> {b.num_guests}
+                {upcomingBookings.map((b, idx) => {
+                  const days = dayjs(b.check_in).startOf('day').diff(dayjs().startOf('day'), 'day');
+                  const countdownText = days <= 0 ? 'Arriving today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
+                  const countdownColor = days <= 0 ? 'red' : days <= 3 ? 'orange' : 'blue';
+                  return (
+                    <div
+                      key={b.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '7px 10px', borderRadius: 7,
+                        background: idx === 0 ? '#f0f5ff' : '#fafafa',
+                        border: `1px solid ${idx === 0 ? '#adc6ff' : '#f0f0f0'}`,
+                        borderLeft: `3px solid ${b.status === 'confirmed' ? '#52c41a' : '#fa8c16'}`,
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Text strong style={{ fontSize: 14 }}>
+                            <UserOutlined style={{ marginRight: 5, color: '#1677ff', fontSize: 12 }} />
+                            {b.guest?.name}
+                          </Text>
+                          {idx === 0 && (
+                            <Tag color="blue" style={{ margin: 0, fontSize: 10, fontWeight: 700, lineHeight: '14px' }}>NEXT</Tag>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: '#434343' }}>
+                            <CalendarOutlined style={{ color: '#1677ff' }} />
+                            {dayjs(b.check_in).format('DD MMM')} → {dayjs(b.check_out).format('DD MMM YYYY')}
                           </span>
-                        )}
+                          <Tag color="blue" style={{ margin: 0, fontSize: 12, fontWeight: 700 }}>{b.nights}n</Tag>
+                          {(b.num_guests ?? 1) > 1 && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#595959' }}>
+                              <TeamOutlined /> {b.num_guests}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                        <Tag color={countdownColor} style={{ margin: 0, fontSize: 11, fontWeight: 700 }}>{countdownText}</Tag>
+                        <Tag color={statusColors[b.status]} style={{ margin: 0, fontSize: 12 }}>{b.status}</Tag>
                       </div>
                     </div>
-                    <Tag color={statusColors[b.status]} style={{ margin: 0, fontSize: 12, flexShrink: 0 }}>{b.status}</Tag>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <Empty description="No upcoming bookings" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '4px 0' }} />
@@ -1489,6 +1577,7 @@ export default function VillaMap() {
                   open={datePickerOpen}
                   onOpenChange={setDatePickerOpen}
                   onChange={handleDatesChange}
+                  disabledDate={current => current && current < dayjs().startOf('day')}
                 />
               </Form.Item>
             </Col>

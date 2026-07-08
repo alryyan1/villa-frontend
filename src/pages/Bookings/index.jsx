@@ -138,6 +138,16 @@ export default function Bookings() {
     onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
   });
 
+  const deletePayment = useMutation({
+    mutationFn: (paymentId) => client.delete(`/bookings/${selected?.id}/payments/${paymentId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      qc.invalidateQueries({ queryKey: ['booking-detail', selected?.id] });
+      message.success('Payment deleted.');
+    },
+    onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
+  });
+
   const confirmBooking = useMutation({
     mutationFn: (id) => client.post(`/bookings/${id}/confirm`).then(r => r.data),
     onSuccess: (res) => {
@@ -374,6 +384,11 @@ export default function Bookings() {
     </table>
   </div>` : ''}
 
+  <div class="fnote">
+    <strong>Note to guest:</strong> Please present a valid photo ID upon check-in. This confirmation serves as your official booking receipt.
+    For inquiries please contact the Al Seef reception.
+  </div>
+
   <div class="bb">
     <div style="font-size:12px;line-height:1.8">
       <strong>Al Seef — Luxury Waterfront Living</strong><br>
@@ -381,11 +396,6 @@ export default function Bookings() {
       <span style="color:#888;font-size:11px">Generated: ${new Date().toLocaleString()}</span>
     </div>
     <div class="stamp">Authorized<br>Stamp &amp;<br>Signature</div>
-  </div>
-
-  <div class="fnote">
-    <strong>Note to guest:</strong> Please present a valid photo ID upon check-in. This confirmation serves as your official booking receipt.
-    For inquiries please contact the Al Seef reception.
   </div>
 </div>
 <script>window.onload = () => window.print();</script>
@@ -603,9 +613,16 @@ export default function Bookings() {
               <Button block icon={<UnorderedListOutlined />} style={{ color: '#8B6914', borderColor: '#C9A96E' }} onClick={() => { openConfirmation(actionRow); setActionRow(null); }}>
                 View Confirmation PDF
               </Button>
-              <Button  block icon={<EditOutlined />} onClick={() => { openEdit(actionRow); setActionRow(null); }}>
-                Edit Booking
-              </Button>
+              <Tooltip title={Number(actionRow?.paid_amount) > 0 ? 'This booking has payments recorded. Delete all payments first (View Details → Payment History) before editing.' : ''}>
+                <Button
+                  block
+                  icon={<EditOutlined />}
+                  disabled={Number(actionRow?.paid_amount) > 0}
+                  onClick={() => { openEdit(actionRow); setActionRow(null); }}
+                >
+                  Edit Booking
+                </Button>
+              </Tooltip>
               <Button block icon={<DollarOutlined />} onClick={() => { setSelected(actionRow); setPayModalOpen(true); setActionRow(null); }}>
                 Add Payment
               </Button>
@@ -990,6 +1007,27 @@ export default function Bookings() {
                     { title: 'Method', dataIndex: 'method', render: m => methodLabels[m] ?? m },
                     { title: 'Recorded By', dataIndex: ['user', 'name'], render: v => v || '—' },
                     { title: 'Notes', dataIndex: 'notes', render: v => v || '—' },
+                    {
+                      title: '', key: 'actions', width: 40,
+                      render: (_, p) => (
+                        <Popconfirm
+                          title="Delete this payment?"
+                          description="This will reduce the booking's paid amount and cannot be undone."
+                          onConfirm={() => deletePayment.mutate(p.id)}
+                          okText="Delete"
+                          okButtonProps={{ danger: true }}
+                          cancelText="Cancel"
+                        >
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            loading={deletePayment.isPending && deletePayment.variables === p.id}
+                          />
+                        </Popconfirm>
+                      ),
+                    },
                   ]}
                 />
               </>
