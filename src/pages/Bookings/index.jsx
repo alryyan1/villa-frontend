@@ -260,6 +260,43 @@ export default function Bookings() {
     const meth = { cash: 'Cash', card: 'Card (Visa/MC)', bank_transfer: 'Bank Transfer' };
     const band = Array(10).fill('Al Seef &nbsp;&nbsp;·&nbsp;&nbsp;').join('');
 
+    const termsAr = `
+      <div class="terms-title">الأحكام والشروط</div>
+
+      <h3>Check-in &amp; Check-out</h3>
+      <p>وقت الدخول: تبدأ عملية تسجيل الدخول واستلام الفيلا من الساعة <strong>1:00 ظهراً</strong> وحتى الساعة <strong>2:00 ظهراً</strong>.</p>
+      <p>وقت المغادرة: يجب الالتزام بتسجيل الخروج النهائي وتسليم المفاتيح في تمام الساعة <strong>10:00 صباحاً</strong> كحد أقصى.</p>
+      <p class="warn">تنويه هام: أي تأخير في إخلاء الفيلا عن الوقت المحدد (10:00 صباحاً) يتسبب تلقائياً في تعطيل جدول التعقيم والصيانة للحجوزات التالية، ويترتب عليه خصم مالي مباشر من مبلغ التأمين.</p>
+
+      <h3>مبلغ التأمين</h3>
+      <p>يتم دفع تأمين مسترد قبل الدخول للفيلا وقدره <strong>50 ريال عماني</strong>.</p>
+
+      <h3>نظافة الفيلا</h3>
+      <p>يجب تسليم الفيلا نظيفة كما تم استلامها، حيث إن عدم الالتزام بالنظافة العامة سيؤدي إلى خصم مبلغ من التأمين.</p>
+
+      <h3>رمال الشاطئ</h3>
+      <p>حرصاً على نظافة الفيلا وراحتكم، يُرجى التكرم بغسل الأرجل وإزالة رمال الشاطئ تماماً قبل الدخول.</p>
+
+      <h3>الأثاث</h3>
+      <p>يمنع منعاً باتاً تحريك أو نقل الأثاث من مكانه المخصص.</p>
+
+      <h3>النفايات</h3>
+      <p>يرجى وضع النفايات في الأكياس المخصصة لها، ويمكنكم طلب أكياس إضافية من مكتب الإدارة عند الحاجة.</p>
+
+      <h3>الملابس المبللة</h3>
+      <p>يرجى تجنب الجلوس بملابس السباحة المبللة على أثاث الفيلا الداخلي بعد العودة من الشاطئ.</p>
+
+      <h3>بند إخلاء المسؤولية القانونية التام (Liability &amp; Safety Disclaimer)</h3>
+      <p class="bullet"><strong>إخلاء مسؤولية الحوادث والإصابات:</strong> تخلي إدارة مجمع فلل السيف السكنية مسؤوليتها القانونية والتامة عن أي حوادث، إصابات شخصية، حالات غرق (لا قدر الله)، أو أي عارض صحي قد يحدث للمستأجر أو مرافقيه أو زواره طوال فترة الإقامة داخل الفيلا، أو عند استخدام المرافق التابعة للمجمع، أو الشاطئ المحاذي.</p>
+      <p class="bullet"><strong>مسؤولية الأطفال والمرافقين:</strong> يتحمل المستأجر الرئيسي المسؤولية القانونية والمدنية الكاملة عن سلامته وسلامة جميع الأفراد المرافقين له والزوار، ويلتزم التزاماً تاماً بمراقبة الأطفال مراقبة لصيقة ودائمة طوال فترة تواجدهم في الفيلا أو عند اقترابهم من الشاطئ والمرافق المفتوحة.</p>
+      <p class="bullet"><strong>المفقودات والثمينات:</strong> إدارة المجمع غير مسؤولة إطلاقاً عن فقدان، سرقة، أو تلف أي مقتنيات شخصية، مجوهرات، أموال، أو أجهزة خاصة بالضيوف داخل الفيلا أثناء فترة الإقامة أو بعد المغادرة.</p>
+
+      <h3>الإقرار والموافقة القانونية (Booking Confirmation &amp; Acceptance)</h3>
+      <div class="accept">إن إتمامكم لعملية دفع المبالغ المستحقة (سواء العربون أو كامل المبلغ) وتأكيد الحجز، يُعد بمثابة توقيع إلكتروني، وموافقة نهائية قطعية وتعهداً تاماً منكم بالالتزام بكافة الشروط، الأحكام، والسياسات المذكورة في هذه الوثيقة، وتحملكم المسؤولية القانونية والمالية المترتبة على أي مخالفة لبنودها.</div>
+
+      <div class="close">نتمنى لكم إقامة مريحة ورحلة سعيدة في فلل السيف</div>
+    `;
+
     const paymentsRows = (b.payments || []).map(p => `
       <tr>
         <td>${p.payment_date ?? '—'}</td>
@@ -273,46 +310,57 @@ export default function Bookings() {
 <title>Booking Confirmation #${b.id}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,sans-serif;font-size:13px;color:#222;background:#fff}
+  @page{size:A4;margin:8mm}
+  body{font-family:Arial,sans-serif;font-size:10px;color:#222;background:#fff}
   @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
-  .page{width:760px;margin:24px auto;border:1px solid #bbb}
+  .page{width:100%;margin:0;border:none}
   /* header */
-  .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 22px 12px}
-  .logo{font-family:Georgia,serif;font-size:30px;font-weight:700;letter-spacing:0.18em;color:#4a3000}
-  .logo-sub{font-size:10px;letter-spacing:0.22em;color:#8B6914;margin-top:2px}
-  .logo-dots{display:flex;gap:5px;margin-top:6px}
-  .logo-dot{width:12px;height:12px;border-radius:50%}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 14px 6px}
+  .logo{font-family:Georgia,serif;font-size:22px;font-weight:700;letter-spacing:0.18em;color:#4a3000}
+  .logo-sub{font-size:8px;letter-spacing:0.22em;color:#8B6914;margin-top:2px}
+  .logo-dots{display:flex;gap:4px;margin-top:4px}
+  .logo-dot{width:10px;height:10px;border-radius:50%}
   .ttl{text-align:right}
-  .ttl h1{font-size:24px;font-weight:700;color:#222}
+  .ttl h1{font-size:17px;font-weight:700;color:#222}
   .ttl h1 span{color:#c00}
-  .ttl p{font-size:10.5px;color:#666;max-width:300px;margin-top:4px;text-align:right}
+  .ttl p{font-size:8px;color:#666;max-width:300px;margin-top:3px;text-align:right}
   /* band */
-  .band{background:#C9A96E;padding:5px 12px;font-size:11px;color:#fff;font-weight:600;letter-spacing:0.06em;white-space:nowrap;overflow:hidden}
+  .band{background:#C9A96E;padding:3px 12px;font-size:8.5px;color:#fff;font-weight:600;letter-spacing:0.06em;white-space:nowrap;overflow:hidden}
   /* two-col */
   .body{display:flex;border-bottom:1px solid #ddd}
-  .lcol{flex:1;padding:14px 18px;border-right:1px solid #ddd}
-  .rcol{width:250px;padding:14px 18px}
-  .f{display:flex;margin-bottom:9px;align-items:baseline}
-  .fl{width:148px;color:#555;flex-shrink:0;font-size:12px}
+  .lcol{flex:1;padding:8px 14px;border-right:1px solid #ddd}
+  .rcol{width:230px;padding:8px 14px}
+  .f{display:flex;margin-bottom:5px;align-items:baseline}
+  .fl{width:140px;color:#555;flex-shrink:0;font-size:9px}
   .fv{font-weight:600}
-  .fvbox{border:1px solid #bbb;padding:2px 10px;text-align:center;min-width:60px;display:inline-block}
+  .fvbox{border:1px solid #bbb;padding:1px 9px;text-align:center;min-width:60px;display:inline-block}
   /* policy */
-  .policy{padding:8px 18px;background:#fafafa;border-bottom:1px solid #ddd;font-size:11.5px}
+  .policy{padding:5px 14px;background:#fafafa;border-bottom:1px solid #ddd;font-size:8.5px}
   /* dates */
-  .dates{display:flex;gap:36px;padding:14px 18px;border-bottom:1px solid #ddd;align-items:flex-end}
-  .db label{font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:#666;display:block;margin-bottom:4px}
-  .db .dv{font-size:16px;font-weight:700;border:1px solid #aaa;padding:5px 18px;display:inline-block}
+  .dates{display:flex;gap:28px;padding:8px 14px;border-bottom:1px solid #ddd;align-items:flex-end}
+  .db label{font-size:7.5px;text-transform:uppercase;letter-spacing:0.07em;color:#666;display:block;margin-bottom:3px}
+  .db .dv{font-size:12px;font-weight:700;border:1px solid #aaa;padding:4px 14px;display:inline-block}
   /* payments table */
-  .ptable{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-  .ptable th{background:#f5f5f5;padding:5px 8px;border:1px solid #ddd;text-align:left;font-weight:600}
-  .ptable td{padding:5px 8px;border:1px solid #ddd}
+  .ptable{width:100%;border-collapse:collapse;font-size:9px;margin-top:6px}
+  .ptable th{background:#f5f5f5;padding:3px 6px;border:1px solid #ddd;text-align:left;font-weight:600}
+  .ptable td{padding:3px 6px;border:1px solid #ddd}
   /* booked-by */
-  .bb{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 18px;border-bottom:1px solid #ddd}
-  .stamp{width:88px;height:64px;border:1px solid #bbb;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center;line-height:1.5}
+  .bb{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 14px;border-bottom:1px solid #ddd}
+  .stamp{width:76px;height:54px;border:1px solid #bbb;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:8px;text-align:center;line-height:1.4}
   /* footer */
-  .fnote{padding:10px 18px;background:#fffbe6;border-top:1px solid #ffe58f;font-size:11px;color:#7c5c00}
-  .section-title{font-weight:700;font-size:12px;margin-bottom:10px;color:#4a3000;border-bottom:1px solid #e8d5a3;padding-bottom:4px}
+  .fnote{padding:6px 14px;background:#fffbe6;border-top:1px solid #ffe58f;font-size:8.5px;color:#7c5c00}
+  .section-title{font-weight:700;font-size:9.5px;margin-bottom:6px;color:#4a3000;border-bottom:1px solid #e8d5a3;padding-bottom:3px}
   .green{color:#389e0d}.orange{color:#d46b08}.red{color:#cf1322}
+  .terms{padding:8px 14px 8px;border-top:2px solid #C9A96E;font-size:6.5px;line-height:1.45;color:#444;direction:rtl;text-align:right}
+  .terms-title{font-size:9.5px;font-weight:700;color:#8B6914;text-align:center;letter-spacing:0.03em;margin-bottom:6px}
+  .terms h3{font-size:7.5px;font-weight:700;color:#4a3000;margin:6px 0 3px;border-bottom:1px solid #e8d5a3;padding-bottom:2px}
+  .terms h3:first-of-type{margin-top:0}
+  .terms p{margin-bottom:3px}
+  .terms strong{color:#222}
+  .terms .warn{color:#cf1322;font-weight:600;background:#fff1f0;border:1px solid #ffccc7;padding:3px 6px;border-radius:2px}
+  .terms .bullet{margin-bottom:2px}
+  .terms .accept{background:#fffbe6;border:1px solid #ffe58f;padding:5px 8px;margin-top:4px;border-radius:2px;line-height:1.45}
+  .terms .close{text-align:center;margin-top:7px;font-weight:700;color:#8B6914;font-size:7.5px}
 </style></head><body>
 <div class="page">
   <div class="hdr">
@@ -388,6 +436,8 @@ export default function Bookings() {
     <strong>Note to guest:</strong> Please present a valid photo ID upon check-in. This confirmation serves as your official booking receipt.
     For inquiries please contact the Al Seef reception.
   </div>
+
+  <div class="terms">${termsAr}</div>
 
   <div class="bb">
     <div style="font-size:12px;line-height:1.8">
