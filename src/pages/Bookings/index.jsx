@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Typography, Popconfirm, Card, Row, Col, App,
   Tabs, Alert, Descriptions, InputNumber, Divider,
-  Tooltip, Spin,
+  Tooltip, Spin, Steps,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
@@ -96,6 +96,23 @@ export default function Bookings() {
     queryFn: () => client.get('/guests').then(r => r.data),
   });
 
+  const [progressToken, setProgressToken] = useState(null);
+  const [progressStage, setProgressStage] = useState(null);
+
+  useEffect(() => {
+    if (!progressToken) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await client.get(`/bookings/progress/${progressToken}`);
+        if (!cancelled) setProgressStage(res.data?.stage ?? null);
+      } catch { /* ignore transient poll failures */ }
+    };
+    poll();
+    const interval = setInterval(poll, 700);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [progressToken]);
+
   const save = useMutation({
     mutationFn: (vals) => editing
       ? client.put(`/bookings/${editing.id}`, vals)
@@ -108,6 +125,8 @@ export default function Bookings() {
       form.resetFields();
       setEditing(null);
       setAvailability(null); setConflicts([]);
+      setProgressToken(null);
+      setProgressStage(null);
 
       if (!editing) {
         setWaModal({ open: true, owner: null, tenant: null, user: null });
@@ -118,7 +137,11 @@ export default function Bookings() {
         }, 1000);
       }
     },
-    onError: (e) => message.error(e.response?.data?.message || 'An error occurred.'),
+    onError: (e) => {
+      setProgressToken(null);
+      setProgressStage(null);
+      message.error(e.response?.data?.message || 'An error occurred.');
+    },
   });
 
   const remove = useMutation({
@@ -245,6 +268,12 @@ export default function Bookings() {
     if (!editing && vals.advance_amount) {
       payload.advance_amount = vals.advance_amount;
       payload.advance_method = vals.advance_method ?? 'cash';
+    }
+    if (!editing) {
+      const token = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      setProgressStage(null);
+      setProgressToken(token);
+      payload.progress_token = token;
     }
     save.mutate(payload);
   };
@@ -839,13 +868,17 @@ export default function Bookings() {
             <TextArea rows={2} />
           </Form.Item>
 
-          {/* Advance payment — only shown when creating a new booking */}
+          {/* Advance payment — required when creating a new booking */}
           {!editing && (
             <>
-              <Divider style={{ margin: '12px 0' }}>Advance Payment (optional)</Divider>
+              <Divider style={{ margin: '12px 0' }}>Advance Payment (required)</Divider>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="advance_amount" label="Advance Amount (OMR)">
+                  <Form.Item
+                    name="advance_amount"
+                    label="Advance Amount (OMR)"
+                    rules={[{ required: true, message: 'Please enter the amount paid' }]}
+                  >
                     <InputNumber min={0.01} style={{ width: '100%' }} placeholder="0.000" />
                   </Form.Item>
                 </Col>
@@ -854,7 +887,7 @@ export default function Bookings() {
                     name="advance_method"
                     label="Payment Method"
                     initialValue="cash"
-                    rules={[{ required: false }]}
+                    rules={[{ required: true }]}
                   >
                     <Select>
                       {methodOptions.map(o => <Option key={o.value} value={o.value}>{o.label}</Option>)}
@@ -863,6 +896,21 @@ export default function Bookings() {
                 </Col>
               </Row>
             </>
+          )}
+
+          {!editing && save.isPending && (
+            <div style={{ marginTop: 12, padding: '10px 4px' }}>
+              <Steps
+                size="small"
+                current={progressStage === 'done' ? 4 : progressStage === 'sending' ? 1 : 0}
+                items={[
+                  { title: 'Uploading', icon: progressStage === 'uploading' || !progressStage ? <Spin size="small" /> : undefined },
+                  { title: 'Sending', icon: progressStage === 'sending' ? <Spin size="small" /> : undefined },
+                  { title: 'Sent' },
+                  { title: 'Booked' },
+                ]}
+              />
+            </div>
           )}
         </Form>
       </Modal>

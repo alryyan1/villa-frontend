@@ -134,6 +134,8 @@ function NotificationsTab() {
       guest_booking_template_lang: data.guest_booking_template_lang ?? 'ar',
       guest_pending_booking_template:      data.guest_pending_booking_template      ?? '',
       guest_pending_booking_template_lang: data.guest_pending_booking_template_lang ?? 'ar',
+      user_booking_template:       data.user_booking_template       ?? '',
+      user_booking_template_lang:  data.user_booking_template_lang  ?? 'ar',
       reception_phone_1:           data.reception_phone_1           ?? '76767769',
       reception_phone_2:           data.reception_phone_2           ?? '76767768',
       guest_checkout_reminder_template:      data.guest_checkout_reminder_template      ?? '',
@@ -141,6 +143,7 @@ function NotificationsTab() {
       owner_booking_template_has_button: data.owner_booking_template_has_button === '1',
       guest_booking_template_has_button: data.guest_booking_template_has_button === '1',
       guest_pending_booking_template_has_button: data.guest_pending_booking_template_has_button === '1',
+      user_booking_template_has_button: data.user_booking_template_has_button === '1',
     });
   }
 
@@ -313,6 +316,31 @@ function NotificationsTab() {
           </Col>
         </Row>
         <Form.Item name="guest_pending_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
+        </Form.Item>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <UserOutlined style={{ color: '#1677ff', marginRight: 6 }} />User (Staff) Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Sent to the staff member who created the booking, regardless of confirmed/pending status.{' '}
+          Params: <Text code>{'{{1}}'}</Text> villa, <Text code>{'{{2}}'}</Text> booking ID,{' '}
+          <Text code>{'{{3}}'}</Text> guest phone, <Text code>{'{{4}}'}</Text> booking date,{' '}
+          <Text code>{'{{5}}'}</Text> nights, <Text code>{'{{6}}'}</Text> remaining amount.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="user_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_user" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="user_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="user_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
           <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
         </Form.Item>
 

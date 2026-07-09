@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Drawer, Modal, Form, Select, DatePicker, Input, InputNumber, Button,
   Tag, Typography, Space, Alert, Spin, Tooltip, Dropdown,
-  Radio, App, Divider, Card, Empty, Row, Col, Avatar, Badge,
+  Radio, App, Divider, Card, Empty, Row, Col, Avatar, Badge, Steps,
 } from 'antd';
 import type { InputRef, MenuProps } from 'antd';
 import {
@@ -97,6 +97,8 @@ interface BookingFormValues {
   status?: 'confirmed' | 'pending';
   notes?: string;
   price_per_night: number;
+  advance_amount: number;
+  advance_method: PaymentMethod;
 }
 
 interface GuestFormValues {
@@ -123,6 +125,9 @@ interface CreateBookingPayload {
   status: 'confirmed' | 'pending';
   notes?: string;
   price_per_night: number;
+  advance_amount: number;
+  advance_method: PaymentMethod;
+  progress_token: string;
 }
 
 interface WaStatus {
@@ -494,6 +499,23 @@ export default function VillaMap() {
   };
 
   // ── Create booking ────────────────────────────────────────────────────────
+  const [progressToken, setProgressToken] = useState<string | null>(null);
+  const [progressStage, setProgressStage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!progressToken) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await client.get(`/bookings/progress/${progressToken}`);
+        if (!cancelled) setProgressStage(res.data?.stage ?? null);
+      } catch { /* ignore transient poll failures */ }
+    };
+    poll();
+    const interval = setInterval(poll, 700);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [progressToken]);
+
   const createBooking = useMutation({
     mutationFn: (vals: CreateBookingPayload) => client.post('/bookings', vals),
     onSuccess: (res: any) => {
@@ -501,6 +523,8 @@ export default function VillaMap() {
       qc.invalidateQueries({ queryKey: ['villa-bookings', selectedVilla?.id] });
       playSuccessChime();
       setBookingModalOpen(false);
+      setProgressToken(null);
+      setProgressStage(null);
 
       form.resetFields();
       setAvailability(null); setConflicts([]);
@@ -511,7 +535,11 @@ export default function VillaMap() {
         setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown });
       }, 1000);
     },
-    onError: (e: any) => message.error(e.response?.data?.message || 'Failed to create booking.'),
+    onError: (e: any) => {
+      setProgressToken(null);
+      setProgressStage(null);
+      message.error(e.response?.data?.message || 'Failed to create booking.');
+    },
   });
 
   const createGuest = useMutation({
@@ -634,6 +662,9 @@ export default function VillaMap() {
 
   const onBookingFinish = (vals: BookingFormValues) => {
     if (!selectedVilla || createBooking.isPending) return;
+    const token = (crypto as any).randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    setProgressStage(null);
+    setProgressToken(token);
     createBooking.mutate({
       villa_id: selectedVilla.id,
       guest_id: vals.guest_id,
@@ -644,6 +675,9 @@ export default function VillaMap() {
       status: vals.status ?? 'confirmed',
       notes: vals.notes,
       price_per_night: vals.price_per_night,
+      advance_amount: vals.advance_amount,
+      advance_method: vals.advance_method,
+      progress_token: token,
     });
   };
 
@@ -1630,6 +1664,34 @@ export default function VillaMap() {
             </Col>
           </Row>
 
+          <Row gutter={10}>
+            <Col span={12}>
+              <Form.Item
+                name="advance_amount"
+                label="Amount Paid (OMR)"
+                rules={[{ required: true, message: 'Please enter the amount paid' }]}
+                style={{ marginBottom: 8 }}
+              >
+                <InputNumber min={0.01} step={0.5} style={{ width: '100%' }} placeholder="0.000" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="advance_method"
+                label="Payment Method"
+                initialValue="cash"
+                rules={[{ required: true }]}
+                style={{ marginBottom: 8 }}
+              >
+                <Select options={[
+                  { value: 'cash', label: 'Cash' },
+                  { value: 'card', label: 'Card' },
+                  { value: 'bank_transfer', label: 'Bank Transfer' },
+                ]} />
+              </Form.Item>
+            </Col>
+          </Row>
+
           {checkingAvailability && (
             <Alert
               message={<Space size={8}><Spin size="small" />Checking availability…</Space>}
@@ -1684,6 +1746,21 @@ export default function VillaMap() {
           <Form.Item name="notes" label="Notes" style={{ marginBottom: 4 }}>
             <Input.TextArea rows={1} placeholder="Optional notes about this booking…" />
           </Form.Item>
+
+          {createBooking.isPending && (
+            <div style={{ marginTop: 12, padding: '10px 4px' }}>
+              <Steps
+                size="small"
+                current={progressStage === 'done' ? 4 : progressStage === 'sending' ? 1 : 0}
+                items={[
+                  { title: 'Uploading', icon: progressStage === 'uploading' || !progressStage ? <Spin size="small" /> : undefined },
+                  { title: 'Sending', icon: progressStage === 'sending' ? <Spin size="small" /> : undefined },
+                  { title: 'Sent' },
+                  { title: 'Booked' },
+                ]}
+              />
+            </div>
+          )}
         </Form>
       </Modal>
 
