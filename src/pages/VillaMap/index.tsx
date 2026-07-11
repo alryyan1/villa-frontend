@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Drawer, Modal, Form, Select, DatePicker, Input, InputNumber, Button,
   Tag, Typography, Space, Alert, Spin, Tooltip, Dropdown,
-  Radio, App, Divider, Card, Empty, Row, Col, Avatar, Badge, Steps,
+  Radio, App, Divider, Card, Empty, Row, Col, Avatar, Badge, Steps, Checkbox,
 } from 'antd';
 import type { InputRef, MenuProps } from 'antd';
 import {
@@ -99,6 +99,7 @@ interface BookingFormValues {
   price_per_night: number;
   advance_amount: number;
   advance_method: PaymentMethod;
+  is_owner?: boolean;
 }
 
 interface GuestFormValues {
@@ -124,10 +125,11 @@ interface CreateBookingPayload {
   check_out: string;
   status: 'confirmed' | 'pending';
   notes?: string;
-  price_per_night: number;
-  advance_amount: number;
-  advance_method: PaymentMethod;
+  price_per_night?: number;
+  advance_amount?: number;
+  advance_method?: PaymentMethod;
   progress_token: string;
+  is_owner: boolean;
 }
 
 interface WaStatus {
@@ -386,6 +388,7 @@ export default function VillaMap() {
   const [conflicts, setConflicts] = useState<BookingConflict[]>([]);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [form] = Form.useForm<BookingFormValues>();
+  const isOwnerBooking = Form.useWatch('is_owner', form);
   const [guestForm] = Form.useForm<GuestFormValues>();
   const [guestModalOpen, setGuestModalOpen] = useState(false);
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
@@ -659,6 +662,7 @@ export default function VillaMap() {
   const [bookingNights, setBookingNights] = useState(0);
   const [bookingPrice, setBookingPrice] = useState(0);
   const [waModal, setWaModal] = useState<WaModalState>({ open: false, owner: null, tenant: null });
+  const villaUnpriced = !selectedVilla?.price_per_night || Number(selectedVilla.price_per_night) <= 0;
 
   const onBookingFinish = (vals: BookingFormValues) => {
     if (!selectedVilla || createBooking.isPending) return;
@@ -674,9 +678,12 @@ export default function VillaMap() {
       check_out: vals.dates[1].format('YYYY-MM-DD'),
       status: vals.status ?? 'confirmed',
       notes: vals.notes,
-      price_per_night: vals.price_per_night,
-      advance_amount: vals.advance_amount,
-      advance_method: vals.advance_method,
+      is_owner: !!vals.is_owner,
+      ...(vals.is_owner ? {} : {
+        price_per_night: vals.price_per_night,
+        advance_amount: vals.advance_amount,
+        advance_method: vals.advance_method,
+      }),
       progress_token: token,
     });
   };
@@ -1533,12 +1540,21 @@ export default function VillaMap() {
         okText="Create Booking"
         okButtonProps={{
           icon: <PlusOutlined />,
-          disabled: availability === false || checkingAvailability || createBooking.isPending,
+          disabled: availability === false || checkingAvailability || createBooking.isPending || (villaUnpriced && !isOwnerBooking),
           loading: checkingAvailability || createBooking.isPending,
         }}
         styles={{ body: { paddingTop: 12, paddingBottom: 0 } }}
       >
         <Form form={form} layout="vertical" onFinish={onBookingFinish} size="small">
+          {villaUnpriced && !isOwnerBooking && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 10, padding: '6px 10px' }}
+              message="This villa has no price set."
+              description="Set its nightly price from the Villas page before creating a booking — it can't be set from here."
+            />
+          )}
           <Row gutter={10}>
             <Col span={14}>
               <Form.Item name="guest_id" label="Guest" rules={[{ required: true, message: 'Select a guest' }]} style={{ marginBottom: 8 }}>
@@ -1595,6 +1611,12 @@ export default function VillaMap() {
             </Col>
           </Row>
 
+          <Form.Item name="is_owner" valuePropName="checked" style={{ marginBottom: 8 }}>
+            <Checkbox>
+              This booking is for the villa owner (no charge, no guest notification)
+            </Checkbox>
+          </Form.Item>
+
           <Row gutter={10}>
             <Col span={10}>
               <Form.Item
@@ -1630,7 +1652,7 @@ export default function VillaMap() {
               <Form.Item
                 name="price_per_night"
                 label="Price / Night"
-                rules={[
+                rules={isOwnerBooking ? [] : [
                   { required: true, message: 'Required' },
                   { type: 'number', min: 0.001, message: '> 0' },
                 ]}
@@ -1641,6 +1663,7 @@ export default function VillaMap() {
                   min={0.001}
                   step={0.5}
                   style={{ width: '100%' }}
+                  disabled={villaUnpriced || isOwnerBooking}
                   onFocus={e => e.target.select()}
                   onChange={v => setBookingPrice(Number(v) || 0)}
                 />
@@ -1652,7 +1675,9 @@ export default function VillaMap() {
                   padding: '0 10px', border: '1px solid #ffe7ba', borderRadius: 6,
                   background: '#fffbf0', height: 24, display: 'flex', alignItems: 'center',
                 }}>
-                  {bookingNights > 0 ? (
+                  {isOwnerBooking ? (
+                    <span style={{ color: '#8B6914', fontSize: 12, fontWeight: 600 }}>No charge</span>
+                  ) : bookingNights > 0 ? (
                     <span style={{ fontWeight: 700, fontSize: 13, color: '#874d00' }}>
                       OMR {((bookingPrice || form.getFieldValue('price_per_night') || 0) * bookingNights).toLocaleString(undefined, { minimumFractionDigits: 3 })}
                     </span>
@@ -1664,15 +1689,15 @@ export default function VillaMap() {
             </Col>
           </Row>
 
-          <Row gutter={10}>
+          <Row gutter={10} style={isOwnerBooking ? { opacity: 0.5 } : undefined}>
             <Col span={12}>
               <Form.Item
                 name="advance_amount"
                 label="Amount Paid (OMR)"
-                rules={[{ required: true, message: 'Please enter the amount paid' }]}
+                rules={isOwnerBooking ? [] : [{ required: true, message: 'Please enter the amount paid' }]}
                 style={{ marginBottom: 8 }}
               >
-                <InputNumber min={0.01} step={0.5} style={{ width: '100%' }} placeholder="0.000" />
+                <InputNumber min={0.01} step={0.5} style={{ width: '100%' }} placeholder="0.000" disabled={isOwnerBooking} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -1680,10 +1705,10 @@ export default function VillaMap() {
                 name="advance_method"
                 label="Payment Method"
                 initialValue="cash"
-                rules={[{ required: true }]}
+                rules={isOwnerBooking ? [] : [{ required: true }]}
                 style={{ marginBottom: 8 }}
               >
-                <Select options={[
+                <Select disabled={isOwnerBooking} options={[
                   { value: 'cash', label: 'Cash' },
                   { value: 'card', label: 'Card' },
                   { value: 'bank_transfer', label: 'Bank Transfer' },

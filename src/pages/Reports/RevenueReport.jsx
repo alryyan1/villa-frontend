@@ -12,7 +12,7 @@ const { Option } = Select;
 
 export default function RevenueReport() {
   usePageTitle('Revenue Report');
-  const [dates, setDates]     = useState([dayjs().startOf('year'), dayjs()]);
+  const [dates, setDates]     = useState([dayjs().startOf('month'), dayjs().endOf('month')]);
   const [groupBy, setGroupBy] = useState('month');
 
   const { data, isLoading, refetch } = useQuery({

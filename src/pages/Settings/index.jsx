@@ -136,6 +136,8 @@ function NotificationsTab() {
       guest_pending_booking_template_lang: data.guest_pending_booking_template_lang ?? 'ar',
       user_booking_template:       data.user_booking_template       ?? '',
       user_booking_template_lang:  data.user_booking_template_lang  ?? 'ar',
+      owner_self_booking_template:      data.owner_self_booking_template      ?? '',
+      owner_self_booking_template_lang: data.owner_self_booking_template_lang ?? 'ar',
       reception_phone_1:           data.reception_phone_1           ?? '76767769',
       reception_phone_2:           data.reception_phone_2           ?? '76767768',
       guest_checkout_reminder_template:      data.guest_checkout_reminder_template      ?? '',
@@ -144,6 +146,7 @@ function NotificationsTab() {
       guest_booking_template_has_button: data.guest_booking_template_has_button === '1',
       guest_pending_booking_template_has_button: data.guest_pending_booking_template_has_button === '1',
       user_booking_template_has_button: data.user_booking_template_has_button === '1',
+      owner_self_booking_template_has_button: data.owner_self_booking_template_has_button === '1',
     });
   }
 
@@ -267,6 +270,30 @@ function NotificationsTab() {
           </Col>
         </Row>
         <Form.Item name="owner_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
+        </Form.Item>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <UserOutlined style={{ color: '#8B6914', marginRight: 6 }} />Owner Self-Booking Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Sent to the owner instead of the regular Owner Template above when they book their own villa (no price/commission).{' '}
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out, <Text code>{'{{5}}'}</Text> value.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="owner_self_booking_template" label="Template Name">
+              <Input placeholder="e.g. owner_booking" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="owner_self_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="owner_self_booking_template_has_button" valuePropName="checked" style={{ marginBottom: 12 }}>
           <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
         </Form.Item>
 

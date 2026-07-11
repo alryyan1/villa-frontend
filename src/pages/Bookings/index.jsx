@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
   Tag, Space, Typography, Popconfirm, Card, Row, Col, App,
   Tabs, Alert, Descriptions, InputNumber, Divider,
-  Tooltip, Spin, Steps,
+  Tooltip, Spin, Steps, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
@@ -51,6 +51,7 @@ export default function Bookings() {
   const [filterDates, setFilterDates]   = useState(null);
   const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null, user: null });
   const [form] = Form.useForm();
+  const isOwnerBooking = Form.useWatch('is_owner', form);
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
@@ -61,6 +62,13 @@ export default function Bookings() {
     const villaId = location.state?.filterVillaId;
     if (villaId) setFilterVilla(villaId);
   }, [location.state?.filterVillaId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [highlightId, setHighlightId] = useState(null);
+
+  useEffect(() => {
+    const bookingId = location.state?.highlightBookingId;
+    if (bookingId) setHighlightId(bookingId);
+  }, [location.state?.highlightBookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setToolbar(
@@ -85,6 +93,16 @@ export default function Bookings() {
       },
     }).then(r => r.data),
   });
+
+  useEffect(() => {
+    if (!highlightId || !data?.data) return;
+    const row = document.querySelector(`[data-row-key="${highlightId}"]`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const timer = setTimeout(() => setHighlightId(null), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightId, data]);
 
   const { data: villas } = useQuery({
     queryKey: ['villas-all'],
@@ -265,9 +283,12 @@ export default function Bookings() {
       status:        vals.status ?? 'confirmed',
       notes:         vals.notes,
     };
-    if (!editing && vals.advance_amount) {
-      payload.advance_amount = vals.advance_amount;
-      payload.advance_method = vals.advance_method ?? 'cash';
+    if (!editing) {
+      payload.is_owner = !!vals.is_owner;
+      if (!vals.is_owner && vals.advance_amount) {
+        payload.advance_amount = vals.advance_amount;
+        payload.advance_method = vals.advance_method ?? 'cash';
+      }
     }
     if (!editing) {
       const token = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -657,7 +678,13 @@ export default function Bookings() {
                 pagination={{ total: data?.total, pageSize: 20 }}
                 scroll={{ x: 800 }}
                 size="small"
-                onRow={r => ({ onClick: () => setActionRow(r), style: { cursor: 'pointer' } })}
+                onRow={r => ({
+                  onClick: () => setActionRow(r),
+                  style: {
+                    cursor: 'pointer',
+                    ...(r.id === highlightId ? { backgroundColor: '#fffbe6', transition: 'background-color 0.3s' } : {}),
+                  },
+                })}
               />
             </Card>
           ),
@@ -868,18 +895,26 @@ export default function Bookings() {
             <TextArea rows={2} />
           </Form.Item>
 
+          {!editing && (
+            <Form.Item name="is_owner" valuePropName="checked" style={{ marginBottom: 8 }}>
+              <Checkbox>
+                This booking is for the villa owner (no charge, no guest notification)
+              </Checkbox>
+            </Form.Item>
+          )}
+
           {/* Advance payment — required when creating a new booking */}
           {!editing && (
             <>
-              <Divider style={{ margin: '12px 0' }}>Advance Payment (required)</Divider>
-              <Row gutter={16}>
+              <Divider style={{ margin: '12px 0' }}>Advance Payment {isOwnerBooking ? '(not required)' : '(required)'}</Divider>
+              <Row gutter={16} style={isOwnerBooking ? { opacity: 0.5 } : undefined}>
                 <Col span={12}>
                   <Form.Item
                     name="advance_amount"
                     label="Advance Amount (OMR)"
-                    rules={[{ required: true, message: 'Please enter the amount paid' }]}
+                    rules={isOwnerBooking ? [] : [{ required: true, message: 'Please enter the amount paid' }]}
                   >
-                    <InputNumber min={0.01} style={{ width: '100%' }} placeholder="0.000" />
+                    <InputNumber min={0.01} style={{ width: '100%' }} placeholder="0.000" disabled={isOwnerBooking} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
@@ -887,9 +922,9 @@ export default function Bookings() {
                     name="advance_method"
                     label="Payment Method"
                     initialValue="cash"
-                    rules={[{ required: true }]}
+                    rules={isOwnerBooking ? [] : [{ required: true }]}
                   >
-                    <Select>
+                    <Select disabled={isOwnerBooking}>
                       {methodOptions.map(o => <Option key={o.value} value={o.value}>{o.label}</Option>)}
                     </Select>
                   </Form.Item>

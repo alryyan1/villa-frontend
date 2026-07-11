@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Row, Col, Card, Statistic, Table, Tag, Typography, Spin } from 'antd';
 import { HomeOutlined, CalendarOutlined, DollarOutlined, RiseOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import dayjs from 'dayjs';
 import { usePageTitle } from '../../hooks/usePageTitle';
@@ -13,6 +14,7 @@ const statusLabels = { confirmed: 'Confirmed', pending: 'Pending', cancelled: 'C
 
 export default function Dashboard() {
   usePageTitle('Dashboard');
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => client.get('/dashboard/stats').then(r => r.data),
@@ -28,6 +30,22 @@ export default function Dashboard() {
     { title: 'Check Out', dataIndex: 'check_out', key: 'check_out', render: d => dayjs(d).format('YYYY-MM-DD') },
     { title: 'Total', dataIndex: 'total_amount', key: 'total', render: v => `OMR ${Number(v).toLocaleString()}` },
     { title: 'Status', dataIndex: 'status', key: 'status', render: s => <Tag color={statusColors[s]}>{statusLabels[s]}</Tag> },
+  ];
+
+  const checkoutCols = [
+    { title: 'Booking ID', dataIndex: 'id', key: 'id', width: 70, render: id => `#${id}` },
+    { title: 'Guest', dataIndex: ['guest', 'name'], key: 'guest', width: 220 },
+    {
+      title: 'Due',
+      key: 'due',
+      render: (_, b) => {
+        const daysOverdue = dayjs().startOf('day').diff(dayjs(b.check_out).startOf('day'), 'day');
+        return daysOverdue <= 0
+          ? <Tag color="blue">Today</Tag>
+          : <Tag color="red">{`+${daysOverdue}`}</Tag>;
+      },
+    },
+    { title: 'Villa', dataIndex: ['villa', 'name'], key: 'villa' },
   ];
 
   const chartData = (data?.revenue_chart || []).map(r => ({
@@ -83,16 +101,19 @@ export default function Dashboard() {
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="Checking Out Today" size="small">
-            {data?.checking_out_today?.length === 0
-              ? <Text type="secondary">No check-outs today</Text>
-              : data?.checking_out_today?.map(b => (
-                <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
-                  <Text>{b.guest?.name}</Text>
-                  <Text type="secondary">{b.villa?.name}</Text>
-                </div>
-              ))
-            }
+          <Card title="Check-out" size="small">
+            <Table
+              dataSource={data?.checking_out_today}
+              columns={checkoutCols}
+              rowKey="id"
+              size="small"
+              pagination={false}
+              locale={{ emptyText: 'No check-outs due' }}
+              onRow={b => ({
+                onClick: () => navigate('/bookings', { state: { highlightBookingId: b.id } }),
+                style: { cursor: 'pointer' },
+              })}
+            />
           </Card>
         </Col>
       </Row>
