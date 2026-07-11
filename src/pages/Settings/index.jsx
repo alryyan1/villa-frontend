@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider, Select, Row, Col } from 'antd';
-import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined, FileProtectOutlined } from '@ant-design/icons';
+import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider, Select, Row, Col, Upload } from 'antd';
+import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined, FileProtectOutlined, UploadOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -114,6 +114,49 @@ const LANG_OPTIONS = [
   { value: 'en_US', label: 'English (en_US)' },
   { value: 'en',    label: 'English (en)' },
 ];
+
+function StampUpload({ data }) {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (file) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      return client.post('/settings/stamp', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      message.success('Stamp image uploaded.');
+    },
+    onError: (err) => message.error(err.response?.data?.message ?? 'Failed to upload stamp image.'),
+  });
+
+  return (
+    <div>
+      {data?.stamp_image_url && (
+        <div style={{ marginBottom: 8 }}>
+          <img
+            src={data.stamp_image_url}
+            alt="Authorized stamp"
+            style={{ maxHeight: 90, maxWidth: 180, border: '1px solid #eee', padding: 4, display: 'block' }}
+          />
+        </div>
+      )}
+      <Upload
+        accept="image/*"
+        showUploadList={false}
+        beforeUpload={(file) => { mutate(file); return false; }}
+      >
+        <Button icon={<UploadOutlined />} loading={isPending}>
+          {data?.stamp_image_url ? 'Replace Stamp Image' : 'Upload Stamp Image'}
+        </Button>
+      </Upload>
+    </div>
+  );
+}
 
 function NotificationsTab() {
   const { message } = App.useApp();
@@ -390,7 +433,7 @@ function NotificationsTab() {
           </Col>
         </Row>
 
-        <Text strong style={{ display: 'block', marginBottom: 8 }}>Reception Phones (used in guest template)</Text>
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>Reception Phones (used in guest template &amp; confirmation PDF)</Text>
         <Row gutter={12}>
           <Col span={12}>
             <Form.Item name="reception_phone_1" label="Reception Phone 1">
@@ -408,6 +451,15 @@ function NotificationsTab() {
           Save Templates
         </Button>
       </Form>
+
+      <Divider orientation="left" style={{ marginTop: 24 }}>
+        <FileProtectOutlined style={{ marginRight: 6 }} />
+        Confirmation PDF Stamp
+      </Divider>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+        Uploaded here, it replaces the "Authorized Stamp &amp; Signature" placeholder on the booking confirmation.
+      </Text>
+      <StampUpload data={data} />
 
       <Divider orientation="left" style={{ marginTop: 24 }}>
         <WhatsAppOutlined style={{ marginRight: 6 }} />

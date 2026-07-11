@@ -51,7 +51,6 @@ export default function Bookings() {
   const [filterDates, setFilterDates]   = useState(null);
   const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null, user: null });
   const [form] = Form.useForm();
-  const isOwnerBooking = Form.useWatch('is_owner', form);
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
@@ -82,7 +81,12 @@ export default function Bookings() {
     return () => clearToolbar();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data, isLoading } = useQuery({  
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => client.get('/settings').then(r => r.data),
+  });
+
+  const { data, isLoading } = useQuery({
     queryKey: ['bookings', filterGuest, filterVilla, filterDates],
     queryFn: () => client.get('/bookings', {
       params: {
@@ -285,7 +289,7 @@ export default function Bookings() {
     };
     if (!editing) {
       payload.is_owner = !!vals.is_owner;
-      if (!vals.is_owner && vals.advance_amount) {
+      if (vals.advance_amount) {
         payload.advance_amount = vals.advance_amount;
         payload.advance_method = vals.advance_method ?? 'cash';
       }
@@ -304,6 +308,8 @@ export default function Bookings() {
     : 0;
 
   const openConfirmation = (b) => {
+    const receptionPhones = [settings?.reception_phone_1, settings?.reception_phone_2].filter(Boolean).join(' / ');
+    const stampImageUrl = settings?.stamp_image_url;
     const fmt  = d => dayjs(d).format('MMMM D, YYYY');
     const omr  = v => `OMR ${Number(v).toLocaleString(undefined, { minimumFractionDigits: 3 })}`;
     const rem  = Number(b.total_amount) - Number(b.paid_amount);
@@ -484,7 +490,7 @@ export default function Bookings() {
 
   <div class="fnote">
     <strong>Note to guest:</strong> Please present a valid photo ID upon check-in. This confirmation serves as your official booking receipt.
-    For inquiries please contact the Al Seef reception.
+    For inquiries please contact the Al Seef reception${receptionPhones ? ` at <strong>${receptionPhones}</strong>` : ''}.
   </div>
 
   <div class="terms">${termsAr}</div>
@@ -493,9 +499,10 @@ export default function Bookings() {
     <div style="font-size:12px;line-height:1.8">
       <strong>Al Seef — Luxury Waterfront Living</strong><br>
       Muscat, Sultanate of Oman<br>
+      ${receptionPhones ? `Reception: ${receptionPhones}<br>` : ''}
       <span style="color:#888;font-size:11px">Generated: ${new Date().toLocaleString()}</span>
     </div>
-    <div class="stamp">Authorized<br>Stamp &amp;<br>Signature</div>
+    <div class="stamp">${stampImageUrl ? `<img src="${stampImageUrl}" style="max-width:72px;max-height:52px;object-fit:contain">` : 'Authorized<br>Stamp &amp;<br>Signature'}</div>
   </div>
 </div>
 <script>window.onload = () => window.print();</script>
@@ -509,7 +516,17 @@ export default function Bookings() {
   const columns = [
     { title: '#', dataIndex: 'id', width: 50 },
     { title: 'Villa', dataIndex: ['villa', 'name'], width: 110 },
-    { title: 'Guest', dataIndex: ['guest', 'name'] },
+    {
+      title: 'Guest', key: 'guest',
+      render: (_, r) => (
+        <div style={{ lineHeight: 1.4 }}>
+          <div>{r.guest?.name}</div>
+          {r.guest?.phone && (
+            <div style={{ fontSize: 11, color: '#8c8c8c' }}>{r.guest.phone}</div>
+          )}
+        </div>
+      ),
+    },
     {
       title: 'Stay', key: 'stay', width: 150,
       render: (_, r) => (
@@ -682,6 +699,7 @@ export default function Bookings() {
                   onClick: () => setActionRow(r),
                   style: {
                     cursor: 'pointer',
+                    ...(r.is_owner ? { backgroundColor: '#e6f4ff' } : {}),
                     ...(r.id === highlightId ? { backgroundColor: '#fffbe6', transition: 'background-color 0.3s' } : {}),
                   },
                 })}
@@ -898,23 +916,22 @@ export default function Bookings() {
           {!editing && (
             <Form.Item name="is_owner" valuePropName="checked" style={{ marginBottom: 8 }}>
               <Checkbox>
-                This booking is for the villa owner (no charge, no guest notification)
+                This booking is for the villa owner (no rental commission)
               </Checkbox>
             </Form.Item>
           )}
 
-          {/* Advance payment — required when creating a new booking */}
+          {/* Advance payment — optional when creating a new booking */}
           {!editing && (
             <>
-              <Divider style={{ margin: '12px 0' }}>Advance Payment {isOwnerBooking ? '(not required)' : '(required)'}</Divider>
-              <Row gutter={16} style={isOwnerBooking ? { opacity: 0.5 } : undefined}>
+              <Divider style={{ margin: '12px 0' }}>Advance Payment (optional)</Divider>
+              <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item
                     name="advance_amount"
                     label="Advance Amount (OMR)"
-                    rules={isOwnerBooking ? [] : [{ required: true, message: 'Please enter the amount paid' }]}
                   >
-                    <InputNumber min={0.01} style={{ width: '100%' }} placeholder="0.000" disabled={isOwnerBooking} />
+                    <InputNumber min={0.01} style={{ width: '100%' }} placeholder="0.000" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
@@ -922,9 +939,9 @@ export default function Bookings() {
                     name="advance_method"
                     label="Payment Method"
                     initialValue="cash"
-                    rules={isOwnerBooking ? [] : [{ required: true }]}
+                    rules={[{ required: true }]}
                   >
-                    <Select disabled={isOwnerBooking}>
+                    <Select>
                       {methodOptions.map(o => <Option key={o.value} value={o.value}>{o.label}</Option>)}
                     </Select>
                   </Form.Item>
