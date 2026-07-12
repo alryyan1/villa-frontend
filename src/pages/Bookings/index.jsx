@@ -1,23 +1,47 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Table, Button, Modal, Form, Input, Select, DatePicker,
-  Tag, Space, Typography, Popconfirm, Card, Row, Col, App,
-  Tabs, Alert, Descriptions, InputNumber, Divider,
-  Tooltip, Spin, Steps, Checkbox,
-} from 'antd';
-import {
-  PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined,
-  DollarOutlined, UnorderedListOutlined, LoginOutlined, LogoutOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, WhatsAppOutlined, ArrowDownOutlined,
+  ArrowDownOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined, CloseCircleOutlined,
+  DeleteOutlined,
+  DollarOutlined,
+  EditOutlined,
+  LoginOutlined, LogoutOutlined,
+  UnorderedListOutlined,
+  WhatsAppOutlined
 } from '@ant-design/icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Checkbox,
+  Col,
+  DatePicker,
+  Descriptions,
+  Divider,
+  Form, Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
+  Select,
+  Space,
+  Spin, Steps,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import dayjs from 'dayjs';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { playSuccessChime } from '../../utils/sounds';
 import client from '../../api/client';
-import BookingCalendar from './CalendarView';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
+import { playSuccessChime } from '../../utils/sounds';
+import BookingCalendar from './CalendarView';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -319,36 +343,18 @@ export default function Bookings() {
     const termsAr = `
       <div class="terms-title">الأحكام والشروط</div>
 
-      <h3>Check-in &amp; Check-out</h3>
-      <p>وقت الدخول: تبدأ عملية تسجيل الدخول واستلام الفيلا من الساعة <strong>1:00 ظهراً</strong> وحتى الساعة <strong>2:00 ظهراً</strong>.</p>
-      <p>وقت المغادرة: يجب الالتزام بتسجيل الخروج النهائي وتسليم المفاتيح في تمام الساعة <strong>10:00 صباحاً</strong> كحد أقصى.</p>
-      <p class="warn">تنويه هام: أي تأخير في إخلاء الفيلا عن الوقت المحدد (10:00 صباحاً) يتسبب تلقائياً في تعطيل جدول التعقيم والصيانة للحجوزات التالية، ويترتب عليه خصم مالي مباشر من مبلغ التأمين.</p>
+      <p class="bullet"><strong>وقت الدخول:</strong> وقت دخول الفيلا ابتداء من الساعة <strong>1:00</strong> الى <strong>2:00</strong> ظهراً.</p>
+      <p class="bullet"><strong>مبلغ التأمين:</strong> يتم دفع تأمين مسترد قبل الدخول للفيلا وقدره <strong>50 ريال عماني</strong>.</p>
+      <p class="bullet"><strong>نظافة الفيلا:</strong> يجب تسليم الفيلا عند الخروج نظيفة كما تم استلامها، حيث إن عدم الالتزام بالنظافة العامة سيؤدي إلى خصم مبلغ من التأمين.</p>
+      <p class="bullet"><strong>رمال الشاطئ:</strong> حرصاً على نظافة الفيلا وراحتكم، يُرجى التكرم بغسل الأرجل وإزالة رمال الشاطئ تماماً قبل الدخول.</p>
+      <p class="bullet"><strong>الأثاث:</strong> يمنع منعاً باتاً تحريك أو نقل الأثاث من مكانه المخصص.</p>
+      <p class="bullet"><strong>النفايات:</strong> يرجى وضع النفايات في الأكياس المخصصة لها، ويمكنكم طلب أكياس إضافية من مكتب الإدارة عند الحاجة.</p>
+      <p class="bullet"><strong>الملابس المبللة:</strong> يرجى تجنب الجلوس بملابس السباحة المبللة على أثاث الفيلا الداخلي بعد العودة من الشاطئ.</p>
+      <p class="bullet"><strong>إخلاء مسؤولية:</strong> تخلي إدارة مجمع فلل السيف السكنية مسؤوليتها القانونية والتامة عن أي حوادث، إصابات شخصية في الفيلا او المجمع السكني.</p>
+      <p class="bullet"><strong>وقت المغادرة:</strong> يجب الالتزام بتسجيل الخروج في تمام الساعة <strong>10:00 صباحاً</strong> كحد أقصى تجنباً لخصم مبلغ التأمين.</p>
+      <p class="bullet"><strong>الإقرار والموافقة القانونية:</strong> إن إتمامكم لعملية دفع المبالغ المستحقة سواء العربون أو كامل المبلغ وتأكيد الحجز، يُعد بمثابة توقيع إلكتروني، وموافقة نهائية منكم بالالتزام بكافة الشروط، والأحكام المذكورة أعلاه.</p>
 
-      <h3>مبلغ التأمين</h3>
-      <p>يتم دفع تأمين مسترد قبل الدخول للفيلا وقدره <strong>50 ريال عماني</strong>.</p>
-
-      <h3>نظافة الفيلا</h3>
-      <p>يجب تسليم الفيلا نظيفة كما تم استلامها، حيث إن عدم الالتزام بالنظافة العامة سيؤدي إلى خصم مبلغ من التأمين.</p>
-
-      <h3>رمال الشاطئ</h3>
-      <p>حرصاً على نظافة الفيلا وراحتكم، يُرجى التكرم بغسل الأرجل وإزالة رمال الشاطئ تماماً قبل الدخول.</p>
-
-      <h3>الأثاث</h3>
-      <p>يمنع منعاً باتاً تحريك أو نقل الأثاث من مكانه المخصص.</p>
-
-      <h3>النفايات</h3>
-      <p>يرجى وضع النفايات في الأكياس المخصصة لها، ويمكنكم طلب أكياس إضافية من مكتب الإدارة عند الحاجة.</p>
-
-      <h3>الملابس المبللة</h3>
-      <p>يرجى تجنب الجلوس بملابس السباحة المبللة على أثاث الفيلا الداخلي بعد العودة من الشاطئ.</p>
-
-      <h3>بند إخلاء المسؤولية القانونية التام (Liability &amp; Safety Disclaimer)</h3>
-      <p class="bullet"><strong>إخلاء مسؤولية الحوادث والإصابات:</strong> تخلي إدارة مجمع فلل السيف السكنية مسؤوليتها القانونية والتامة عن أي حوادث، إصابات شخصية، حالات غرق (لا قدر الله)، أو أي عارض صحي قد يحدث للمستأجر أو مرافقيه أو زواره طوال فترة الإقامة داخل الفيلا، أو عند استخدام المرافق التابعة للمجمع، أو الشاطئ المحاذي.</p>
-      <p class="bullet"><strong>مسؤولية الأطفال والمرافقين:</strong> يتحمل المستأجر الرئيسي المسؤولية القانونية والمدنية الكاملة عن سلامته وسلامة جميع الأفراد المرافقين له والزوار، ويلتزم التزاماً تاماً بمراقبة الأطفال مراقبة لصيقة ودائمة طوال فترة تواجدهم في الفيلا أو عند اقترابهم من الشاطئ والمرافق المفتوحة.</p>
-      <p class="bullet"><strong>المفقودات والثمينات:</strong> إدارة المجمع غير مسؤولة إطلاقاً عن فقدان، سرقة، أو تلف أي مقتنيات شخصية، مجوهرات، أموال، أو أجهزة خاصة بالضيوف داخل الفيلا أثناء فترة الإقامة أو بعد المغادرة.</p>
-
-      <h3>الإقرار والموافقة القانونية (Booking Confirmation &amp; Acceptance)</h3>
-      <div class="accept">إن إتمامكم لعملية دفع المبالغ المستحقة (سواء العربون أو كامل المبلغ) وتأكيد الحجز، يُعد بمثابة توقيع إلكتروني، وموافقة نهائية قطعية وتعهداً تاماً منكم بالالتزام بكافة الشروط، الأحكام، والسياسات المذكورة في هذه الوثيقة، وتحملكم المسؤولية القانونية والمالية المترتبة على أي مخالفة لبنودها.</div>
+      ${receptionPhones ? `<p>يرجى التواصل على الأرقام التالية قبل الوصول بساعة:<br>${receptionPhones}</p>` : ''}
 
       <div class="close">نتمنى لكم إقامة مريحة ورحلة سعيدة في فلل السيف</div>
     `;
@@ -520,7 +526,10 @@ export default function Bookings() {
       title: 'Guest', key: 'guest',
       render: (_, r) => (
         <div style={{ lineHeight: 1.4 }}>
-          <div>{r.guest?.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {r.guest?.name}
+            {r.is_owner && <Tag color="blue" style={{ marginRight: 0, fontSize: 11 }}>Owner</Tag>}
+          </div>
           {r.guest?.phone && (
             <div style={{ fontSize: 11, color: '#8c8c8c' }}>{r.guest.phone}</div>
           )}

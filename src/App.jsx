@@ -16,6 +16,7 @@ import RevenueReport from './pages/Reports/RevenueReport';
 import VillaPerformance from './pages/Reports/VillaPerformance';
 import UserPerformance from './pages/Reports/UserPerformance';
 import PaymentMethodsReport from './pages/Reports/PaymentMethodsReport';
+import OwnerBookingsReport from './pages/Reports/OwnerBookingsReport';
 import Users from './pages/Users';
 import ActivityLogs from './pages/ActivityLogs';
 import VillaMap from './pages/VillaMap';
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="reports/villa-performance" element={<PageGuard pageKey="/reports/villa-performance"><VillaPerformance /></PageGuard>} />
         <Route path="reports/user-performance" element={<PageGuard pageKey="/reports/user-performance"><UserPerformance /></PageGuard>} />
         <Route path="reports/payment-methods" element={<PageGuard pageKey="/reports/payment-methods"><PaymentMethodsReport /></PageGuard>} />
+        <Route path="reports/owner-bookings" element={<PageGuard pageKey="/reports/owner-bookings"><OwnerBookingsReport /></PageGuard>} />
         <Route path="users" element={<PageGuard pageKey="/users"><Users /></PageGuard>} />
         <Route path="activity-logs" element={<PageGuard pageKey="/activity-logs"><ActivityLogs /></PageGuard>} />
         <Route path="map" element={<PageGuard pageKey="/map"><VillaMap /></PageGuard>} />

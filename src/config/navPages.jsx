@@ -22,6 +22,7 @@ export const menuItems = [
       { key: '/reports/villa-performance', label: 'Villa Performance' },
       { key: '/reports/user-performance', label: 'User Performance' },
       { key: '/reports/payment-methods', label: 'Payment Methods' },
+      { key: '/reports/owner-bookings', label: 'Owner Bookings' },
     ],
   },
   { key: '/maintenance', icon: <BuildOutlined />, label: 'Maintenance' },
