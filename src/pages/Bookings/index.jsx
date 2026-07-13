@@ -313,7 +313,7 @@ export default function Bookings() {
     };
     if (!editing) {
       payload.is_owner = !!vals.is_owner;
-      if (vals.advance_amount) {
+      if (vals.advance_amount != null) {
         payload.advance_amount = vals.advance_amount;
         payload.advance_method = vals.advance_method ?? 'cash';
       }
@@ -940,7 +940,7 @@ export default function Bookings() {
                     name="advance_amount"
                     label="Advance Amount (OMR)"
                   >
-                    <InputNumber min={0.01} style={{ width: '100%' }} placeholder="0.000" />
+                    <InputNumber min={0} style={{ width: '100%' }} placeholder="0.000" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>

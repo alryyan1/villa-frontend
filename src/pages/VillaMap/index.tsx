@@ -141,6 +141,7 @@ interface WaModalState {
   open: boolean;
   owner: WaStatus | null;
   tenant: WaStatus | null;
+  user: WaStatus | null;
 }
 
 interface BookingConflict {
@@ -530,11 +531,11 @@ export default function VillaMap() {
 
       form.resetFields();
       setAvailability(null); setConflicts([]);
-      setWaModal({ open: true, owner: null, tenant: null });
+      setWaModal({ open: true, owner: null, tenant: null, user: null });
       setTimeout(() => {
         const wa = res.data?.whatsapp ?? {};
         const unknown: WaStatus = { sent: false, error: 'No status returned' };
-        setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown });
+        setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown });
       }, 1000);
     },
     onError: (e: any) => {
@@ -660,7 +661,7 @@ export default function VillaMap() {
 
   const [bookingNights, setBookingNights] = useState(0);
   const [bookingPrice, setBookingPrice] = useState(0);
-  const [waModal, setWaModal] = useState<WaModalState>({ open: false, owner: null, tenant: null });
+  const [waModal, setWaModal] = useState<WaModalState>({ open: false, owner: null, tenant: null, user: null });
   const villaUnpriced = !selectedVilla?.price_per_night || Number(selectedVilla.price_per_night) <= 0;
 
   const onBookingFinish = (vals: BookingFormValues) => {
@@ -1833,11 +1834,11 @@ export default function VillaMap() {
         open={waModal.open}
         centered
         width={360}
-        closable={waModal.owner !== null || waModal.tenant !== null}
-        onCancel={() => setWaModal({ open: false, owner: null, tenant: null })}
+        closable={waModal.owner !== null || waModal.tenant !== null || waModal.user !== null}
+        onCancel={() => setWaModal({ open: false, owner: null, tenant: null, user: null })}
         footer={
-          (waModal.owner !== null || waModal.tenant !== null) ? (
-            <Button type="primary" onClick={() => setWaModal({ open: false, owner: null, tenant: null })}>
+          (waModal.owner !== null || waModal.tenant !== null || waModal.user !== null) ? (
+            <Button type="primary" onClick={() => setWaModal({ open: false, owner: null, tenant: null, user: null })}>
               Done
             </Button>
           ) : null
@@ -1856,6 +1857,7 @@ export default function VillaMap() {
           {([
             { key: 'owner', label: 'Owner', status: waModal.owner },
             { key: 'tenant', label: 'Guest', status: waModal.tenant },
+            { key: 'user', label: 'You', status: waModal.user },
           ] as Array<{ key: string; label: string; status: WaStatus | null }>).map(({ key, label, status }) => {
             return (
               <div key={key} style={{
