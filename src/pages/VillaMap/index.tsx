@@ -87,6 +87,7 @@ interface Booking {
   notes?: string | null;
   num_guests?: number | null;
   guest?: Guest | null;
+  user?: { id: number; name: string } | null;
 }
 
 interface BookingFormValues {
@@ -1164,12 +1165,13 @@ export default function VillaMap() {
                 )}
 
                 {/* Guest + status row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Text strong style={{ fontSize: 14 }}>
                       <UserOutlined style={{ marginRight: 5, color: '#1677ff' }} />
                       {currentBooking.guest?.name}
                     </Text>
+                    <Tag style={{ margin: 0, fontSize: 10, fontWeight: 700, lineHeight: '14px' }}>#{currentBooking.id}</Tag>
                     <div style={{
                       display: 'inline-flex', alignItems: 'center', gap: 3,
                       background: '#f0f5ff', border: '1px solid #adc6ff',
@@ -1184,6 +1186,11 @@ export default function VillaMap() {
                     <Tag color={payColors[currentBooking.payment_status]} style={{ margin: 0, fontSize: 11 }}>{payLabels[currentBooking.payment_status]}</Tag>
                   </Space>
                 </div>
+                {currentBooking.user?.name && (
+                  <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+                    Booked by: {currentBooking.user.name}
+                  </Text>
+                )}
 
                 {/* Date range */}
                 <div style={{
@@ -1339,12 +1346,13 @@ export default function VillaMap() {
                     </Text>
 
                     {/* Guest + status */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Text strong style={{ fontSize: 14 }}>
                           <UserOutlined style={{ marginRight: 5, color: '#8c8c8c' }} />
                           {lastBooking.guest?.name}
                         </Text>
+                        <Tag style={{ margin: 0, fontSize: 10, fontWeight: 700, lineHeight: '14px' }}>#{lastBooking.id}</Tag>
                         <div style={{
                           display: 'inline-flex', alignItems: 'center', gap: 3,
                           background: '#f5f5f5', border: '1px solid #d9d9d9',
@@ -1359,6 +1367,11 @@ export default function VillaMap() {
                         <Tag color={payColors[lastBooking.payment_status]} style={{ margin: 0, fontSize: 11 }}>{payLabels[lastBooking.payment_status]}</Tag>
                       </Space>
                     </div>
+                    {lastBooking.user?.name && (
+                      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+                        Booked by: {lastBooking.user.name}
+                      </Text>
+                    )}
 
                     {/* Date range */}
                     <div style={{
@@ -1482,6 +1495,7 @@ export default function VillaMap() {
                             <UserOutlined style={{ marginRight: 5, color: '#1677ff', fontSize: 12 }} />
                             {b.guest?.name}
                           </Text>
+                          <Tag style={{ margin: 0, fontSize: 10, fontWeight: 700, lineHeight: '14px' }}>#{b.id}</Tag>
                           {idx === 0 && (
                             <Tag color="blue" style={{ margin: 0, fontSize: 10, fontWeight: 700, lineHeight: '14px' }}>NEXT</Tag>
                           )}
@@ -1498,6 +1512,12 @@ export default function VillaMap() {
                             </span>
                           )}
                         </div>
+                        {b.user?.name && (
+                          <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>Booked by:</Text>
+                            <Text strong style={{ fontSize: 12, color: '#434343' }}>{b.user.name}</Text>
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                         <Tag color={countdownColor} style={{ margin: 0, fontSize: 11, fontWeight: 700 }}>{countdownText}</Tag>
