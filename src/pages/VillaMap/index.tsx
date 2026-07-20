@@ -55,6 +55,7 @@ interface Villa {
   contract_end_date?: string | null;
   checking_in_today?: boolean;
   awaiting_arrival?: boolean;
+  checking_out_today?: boolean;
   owner?: Owner | null;
   active_booking_id?: number | null;
   active_booking_checked_in?: boolean;
@@ -219,6 +220,7 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
   if (number === null) return <div style={{ width: 18, flexShrink: 0 }} />;
   const checkingIn = villa?.checking_in_today;
   const awaitingArrival = villa?.awaiting_arrival;
+  const checkingOutToday = villa?.checking_out_today;
   const focused = highlight || selected;
   const hasBalanceDue = villa?.status === 'occupied' && !!villa.active_booking_payment && villa.active_booking_payment !== 'paid';
   // console.log('VillaTile', 'number', number, 'villa', villa, 'highlight', highlight, 'dimmed', dimmed, 'checkingIn', checkingIn, 'awaitingArrival', awaitingArrival);
@@ -252,7 +254,7 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
         width: 54,
         height: 50,
         margin: 2,
-        border: `2px solid ${focused ? '#1677ff' : awaitingArrival ? '#fa8c16' : cfg.border}`,
+        border: `2px solid ${focused ? '#1677ff' : awaitingArrival ? '#fa8c16' : checkingOutToday ? '#13c2c2' : cfg.border}`,
         borderRadius: 8,
         background: dimmed ? '#f5f5f5' : cfg.bg,
         color: dimmed ? '#d9d9d9' : cfg.color,
@@ -284,6 +286,18 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
           color: cfg.color,
           opacity: 0.85,
         }} />
+      )}
+      {checkingOutToday && (
+        <Tooltip title="Checking out today">
+          <LogoutOutlined style={{
+            position: 'absolute',
+            top: 3,
+            right: 4,
+            fontSize: 10,
+            color: '#13c2c2',
+            opacity: 0.9,
+          }} />
+        </Tooltip>
       )}
       {hasBalanceDue && (
         <Tooltip title="Balance remaining">
@@ -2064,6 +2078,11 @@ export default function VillaMap() {
             <div>
               <Text strong style={{ fontSize: 12 }}><UserOutlined style={{ marginRight: 5 }} />Person icon (top-left)</Text>
               <div style={{ color: '#595959', marginTop: 2 }}>Guest is checking in today</div>
+            </div>
+
+            <div>
+              <Text strong style={{ fontSize: 12 }}><LogoutOutlined style={{ marginRight: 5, color: '#13c2c2' }} />Cyan logout icon &amp; border (top-right)</Text>
+              <div style={{ color: '#595959', marginTop: 2 }}>Guest is checking out today (departure not confirmed yet)</div>
             </div>
 
             <div>
