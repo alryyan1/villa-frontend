@@ -5,6 +5,7 @@ import {
   DeleteOutlined,
   DollarOutlined,
   EditOutlined,
+  FieldTimeOutlined,
   LoginOutlined, LogoutOutlined,
   UnorderedListOutlined,
   WhatsAppOutlined
@@ -64,6 +65,8 @@ export default function Bookings() {
   const [modalOpen, setModalOpen]       = useState(false);
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [detailOpen, setDetailOpen]     = useState(false);
+  const [shrinkWarningOpen, setShrinkWarningOpen] = useState(false);
+  const [extendConfirm, setExtendConfirm] = useState(null);
   const [actionRow, setActionRow]       = useState(null);
   const [editing, setEditing]           = useState(null);
   const [selected, setSelected]         = useState(null);
@@ -73,7 +76,7 @@ export default function Bookings() {
   const [filterGuest, setFilterGuest]   = useState(null);
   const [filterVilla, setFilterVilla]   = useState(null);
   const [filterDates, setFilterDates]   = useState(null);
-  const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null, user: null });
+  const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null, user: null, title: 'Booking Created' });
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
   const qc = useQueryClient();
@@ -174,12 +177,21 @@ export default function Bookings() {
       setProgressToken(null);
       setProgressStage(null);
 
-      if (!editing) {
-        setWaModal({ open: true, owner: null, tenant: null, user: null });
+      // store() returns { booking, whatsapp } always; update() only includes a
+      // non-null whatsapp when the edit was an extend (more nights than before).
+      if (!editing || res.data?.whatsapp) {
+        const title = !editing
+          ? 'Booking Created'
+          : res.data?.action === 'extended'
+            ? 'Booking Extended'
+            : res.data?.action === 'cancelled'
+              ? 'Booking Cancelled'
+              : 'Booking Updated';
+        setWaModal({ open: true, owner: null, tenant: null, user: null, title });
         setTimeout(() => {
           const wa = res.data?.whatsapp ?? {};
           const unknown = { sent: false, error: 'No status returned' };
-          setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown });
+          setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown, title });
         }, 1000);
       }
     },
@@ -191,8 +203,20 @@ export default function Bookings() {
   });
 
   const remove = useMutation({
-    mutationFn: (id) => client.delete(`/bookings/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bookings'] }); message.success('Booking deleted.'); },
+    mutationFn: (id) => client.delete(`/bookings/${id}`).then(r => r.data),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+      message.success('Booking deleted.');
+      setActionRow(null);
+
+      setWaModal({ open: true, owner: null, tenant: null, user: null, title: 'Booking Cancelled' });
+      setTimeout(() => {
+        const wa = res?.whatsapp ?? {};
+        const unknown = { sent: false, error: 'No status returned' };
+        setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown, title: 'Booking Cancelled' });
+      }, 1000);
+    },
+    onError: (e) => message.error(e.response?.data?.message || 'Failed to delete booking.'),
   });
 
   const addPayment = useMutation({
@@ -224,11 +248,11 @@ export default function Bookings() {
       message.success('Booking confirmed.');
       setActionRow(null);
       if (res.notified) {
-        setWaModal({ open: true, owner: null, tenant: null, user: null });
+        setWaModal({ open: true, owner: null, tenant: null, user: null, title: 'Booking Created' });
         setTimeout(() => {
           const wa = res.whatsapp ?? {};
           const unknown = { sent: false, error: 'No status returned' };
-          setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown });
+          setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown, title: 'Booking Created' });
         }, 1000);
       }
     },
@@ -260,8 +284,17 @@ export default function Bookings() {
   const { data: bookingDetail } = useQuery({
     queryKey: ['booking-detail', selected?.id],
     queryFn: () => client.get(`/bookings/${selected.id}`).then(r => r.data),
-    enabled: !!selected?.id && detailOpen,
+    enabled: !!selected?.id && (detailOpen || shrinkWarningOpen),
   });
+
+  // Keep the open Edit form's payment snapshot in sync while payments are being
+  // deleted from the shrink-warning modal, so a retried Save re-evaluates against
+  // the current paid_amount rather than the stale one captured when Edit opened.
+  useEffect(() => {
+    if (bookingDetail && editing && bookingDetail.id === editing.id) {
+      setEditing(prev => (prev ? { ...prev, paid_amount: bookingDetail.paid_amount } : prev));
+    }
+  }, [bookingDetail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkAvailability = async () => {
     const { villa_id, dates } = form.getFieldsValue(['villa_id', 'dates']);
@@ -324,6 +357,47 @@ export default function Bookings() {
       setProgressToken(token);
       payload.progress_token = token;
     }
+
+    // Shortening the stay (fewer nights than before) can strand existing payments
+    // above the new, smaller total — same-or-more nights (an "extend", like VillaMap's
+    // Extend Booking) needs no such guard since the price only grows to cover it.
+    if (editing) {
+      const newNights = vals.dates[1].diff(vals.dates[0], 'day');
+      const isShrink = newNights < editing.nights;
+      const isExtend = newNights > editing.nights;
+
+      if (isShrink && Number(editing.paid_amount) > 0) {
+        setSelected(editing);
+        setShrinkWarningOpen(true);
+        return;
+      }
+
+      if (isExtend && (newNights - editing.nights) > 2) {
+        message.error('A booking can only be extended by up to 2 nights at a time.');
+        return;
+      }
+
+      if (isExtend) {
+        const villa = villas?.find(v => v.id === vals.villa_id);
+        const pricePerNight = Number(villa?.price_per_night ?? 0);
+        const newTotal = newNights * pricePerNight;
+        setExtendConfirm({
+          payload,
+          guestName: editing.guest?.name,
+          villaName: villa?.name ?? editing.villa?.name,
+          oldNights: editing.nights,
+          newNights,
+          oldTotal: Number(editing.total_amount),
+          newTotal,
+          diff: newTotal - Number(editing.total_amount),
+          oldCheckIn: editing.check_in,
+          oldCheckOut: editing.check_out,
+          newCheckOut: payload.check_out,
+        });
+        return;
+      }
+    }
+
     save.mutate(payload);
   };
 
@@ -334,6 +408,7 @@ export default function Bookings() {
   const openConfirmation = (b) => {
     const receptionPhones = [settings?.reception_phone_1, settings?.reception_phone_2].filter(Boolean).join(' / ');
     const stampImageUrl = settings?.stamp_image_url;
+    const managementLogoUrl = settings?.management_logo_url;
     const fmt  = d => dayjs(d).format('MMMM D, YYYY');
     const omr  = v => `OMR ${Number(v).toLocaleString(undefined, { minimumFractionDigits: 3 })}`;
     const rem  = Number(b.total_amount) - Number(b.paid_amount);
@@ -343,7 +418,7 @@ export default function Bookings() {
     const termsAr = `
       <div class="terms-title">الأحكام والشروط</div>
 
-      <p class="bullet"><strong>وقت الدخول:</strong> وقت دخول الفيلا ابتداء من الساعة <strong>1:00</strong> الى <strong>2:00</strong> ظهراً.</p>
+      <p class="bullet"><strong>وقت الدخول:</strong> وقت دخول الفيلا ابتداء من الساعة <strong>2:00</strong> الى <strong>3:00</strong> ظهراً.</p>
       <p class="bullet"><strong>مبلغ التأمين:</strong> يتم دفع تأمين مسترد قبل الدخول للفيلا وقدره <strong>50 ريال عماني</strong>.</p>
       <p class="bullet"><strong>نظافة الفيلا:</strong> يجب تسليم الفيلا عند الخروج نظيفة كما تم استلامها، حيث إن عدم الالتزام بالنظافة العامة سيؤدي إلى خصم مبلغ من التأمين.</p>
       <p class="bullet"><strong>رمال الشاطئ:</strong> حرصاً على نظافة الفيلا وراحتكم، يُرجى التكرم بغسل الأرجل وإزالة رمال الشاطئ تماماً قبل الدخول.</p>
@@ -351,7 +426,7 @@ export default function Bookings() {
       <p class="bullet"><strong>النفايات:</strong> يرجى وضع النفايات في الأكياس المخصصة لها، ويمكنكم طلب أكياس إضافية من مكتب الإدارة عند الحاجة.</p>
       <p class="bullet"><strong>الملابس المبللة:</strong> يرجى تجنب الجلوس بملابس السباحة المبللة على أثاث الفيلا الداخلي بعد العودة من الشاطئ.</p>
       <p class="bullet"><strong>إخلاء مسؤولية:</strong> تخلي إدارة مجمع فلل السيف السكنية مسؤوليتها القانونية والتامة عن أي حوادث، إصابات شخصية في الفيلا او المجمع السكني.</p>
-      <p class="bullet"><strong>وقت المغادرة:</strong> يجب الالتزام بتسجيل الخروج في تمام الساعة <strong>10:00 صباحاً</strong> كحد أقصى تجنباً لخصم مبلغ التأمين.</p>
+      <p class="bullet"><strong>وقت المغادرة:</strong> يجب الالتزام بتسجيل الخروج في تمام الساعة <strong>11:00 ظهراً</strong> كحد أقصى تجنباً لخصم مبلغ التأمين.</p>
       <p class="bullet"><strong>الإقرار والموافقة القانونية:</strong> إن إتمامكم لعملية دفع المبالغ المستحقة سواء العربون أو كامل المبلغ وتأكيد الحجز، يُعد بمثابة توقيع إلكتروني، وموافقة نهائية منكم بالالتزام بكافة الشروط، والأحكام المذكورة أعلاه.</p>
 
       ${receptionPhones ? `<p>يرجى التواصل على الأرقام التالية قبل الوصول بساعة:<br>${receptionPhones}</p>` : ''}
@@ -378,6 +453,8 @@ export default function Bookings() {
   .page{width:100%;margin:0;border:none}
   /* header */
   .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 14px 6px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .mgmt-logo{height:44px;width:auto;object-fit:contain}
   .logo{font-family:Georgia,serif;font-size:22px;font-weight:700;letter-spacing:0.18em;color:#4a3000}
   .logo-sub{font-size:8px;letter-spacing:0.22em;color:#8B6914;margin-top:2px}
   .logo-dots{display:flex;gap:4px;margin-top:4px}
@@ -393,15 +470,15 @@ export default function Bookings() {
   .lcol{flex:1;padding:8px 14px;border-right:1px solid #ddd}
   .rcol{width:230px;padding:8px 14px}
   .f{display:flex;margin-bottom:5px;align-items:baseline}
-  .fl{width:140px;color:#555;flex-shrink:0;font-size:9px}
-  .fv{font-weight:600}
+  .fl{width:140px;color:#555;flex-shrink:0;font-size:10.5px}
+  .fv{font-weight:600;font-size:10.5px}
   .fvbox{border:1px solid #bbb;padding:1px 9px;text-align:center;min-width:60px;display:inline-block}
   /* policy */
-  .policy{padding:5px 14px;background:#fafafa;border-bottom:1px solid #ddd;font-size:8.5px}
+  .policy{padding:5px 14px;background:#fafafa;border-bottom:1px solid #ddd;font-size:9.5px}
   /* dates */
   .dates{display:flex;gap:28px;padding:8px 14px;border-bottom:1px solid #ddd;align-items:flex-end}
-  .db label{font-size:7.5px;text-transform:uppercase;letter-spacing:0.07em;color:#666;display:block;margin-bottom:3px}
-  .db .dv{font-size:12px;font-weight:700;border:1px solid #aaa;padding:4px 14px;display:inline-block}
+  .db label{font-size:8.5px;text-transform:uppercase;letter-spacing:0.07em;color:#666;display:block;margin-bottom:3px}
+  .db .dv{font-size:13.5px;font-weight:700;border:1px solid #aaa;padding:4px 14px;display:inline-block}
   /* payments table */
   .ptable{width:100%;border-collapse:collapse;font-size:9px;margin-top:6px}
   .ptable th{background:#f5f5f5;padding:3px 6px;border:1px solid #ddd;text-align:left;font-weight:600}
@@ -411,30 +488,33 @@ export default function Bookings() {
   .stamp{width:76px;height:54px;border:1px solid #bbb;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:8px;text-align:center;line-height:1.4}
   /* footer */
   .fnote{padding:6px 14px;background:#fffbe6;border-top:1px solid #ffe58f;font-size:8.5px;color:#7c5c00}
-  .section-title{font-weight:700;font-size:9.5px;margin-bottom:6px;color:#4a3000;border-bottom:1px solid #e8d5a3;padding-bottom:3px}
+  .section-title{font-weight:700;font-size:11px;margin-bottom:6px;color:#4a3000;border-bottom:1px solid #e8d5a3;padding-bottom:3px}
   .green{color:#389e0d}.orange{color:#d46b08}.red{color:#cf1322}
-  .terms{padding:8px 14px 8px;border-top:2px solid #C9A96E;font-size:6.5px;line-height:1.45;color:#444;direction:rtl;text-align:right}
-  .terms-title{font-size:9.5px;font-weight:700;color:#8B6914;text-align:center;letter-spacing:0.03em;margin-bottom:6px}
-  .terms h3{font-size:7.5px;font-weight:700;color:#4a3000;margin:6px 0 3px;border-bottom:1px solid #e8d5a3;padding-bottom:2px}
+  .terms{padding:8px 14px 8px;border-top:2px solid #C9A96E;font-size:8.3px;line-height:1.55;color:#444;direction:rtl;text-align:right}
+  .terms-title{font-size:11.5px;font-weight:700;color:#8B6914;text-align:center;letter-spacing:0.03em;margin-bottom:6px}
+  .terms h3{font-size:9.3px;font-weight:700;color:#4a3000;margin:6px 0 3px;border-bottom:1px solid #e8d5a3;padding-bottom:2px}
   .terms h3:first-of-type{margin-top:0}
   .terms p{margin-bottom:3px}
   .terms strong{color:#222}
   .terms .warn{color:#cf1322;font-weight:600;background:#fff1f0;border:1px solid #ffccc7;padding:3px 6px;border-radius:2px}
   .terms .bullet{margin-bottom:2px}
   .terms .accept{background:#fffbe6;border:1px solid #ffe58f;padding:5px 8px;margin-top:4px;border-radius:2px;line-height:1.45}
-  .terms .close{text-align:center;margin-top:7px;font-weight:700;color:#8B6914;font-size:7.5px}
+  .terms .close{text-align:center;margin-top:7px;font-weight:700;color:#8B6914;font-size:9.3px}
 </style></head><body>
 <div class="page">
   <div class="hdr">
-    <div>
-      <div class="logo">Al Seef</div>
-      <div class="logo-sub">LUXURY WATERFRONT LIVING</div>
-      <div class="logo-dots">
-        <div class="logo-dot" style="background:#C9A96E"></div>
-        <div class="logo-dot" style="background:#8B6914"></div>
-        <div class="logo-dot" style="background:#D4B896"></div>
-        <div class="logo-dot" style="background:#A0784A"></div>
-        <div class="logo-dot" style="background:#C9A96E"></div>
+    <div class="brand">
+      ${managementLogoUrl ? `<img src="${managementLogoUrl}" class="mgmt-logo">` : ''}
+      <div>
+        <div class="logo">Al Seef</div>
+        <div class="logo-sub">LUXURY WATERFRONT LIVING</div>
+        <div class="logo-dots">
+          <div class="logo-dot" style="background:#C9A96E"></div>
+          <div class="logo-dot" style="background:#8B6914"></div>
+          <div class="logo-dot" style="background:#D4B896"></div>
+          <div class="logo-dot" style="background:#A0784A"></div>
+          <div class="logo-dot" style="background:#C9A96E"></div>
+        </div>
       </div>
     </div>
     <div class="ttl">
@@ -449,7 +529,7 @@ export default function Bookings() {
     <div class="lcol">
       <div class="section-title">Guest &amp; Booking Information</div>
       <div class="f"><span class="fl">Booking ID :</span><span class="fv">${b.id}</span></div>
-      <div class="f"><span class="fl">Client :</span><span class="fv" style="font-size:14px">${b.guest?.name ?? '—'}</span></div>
+      <div class="f"><span class="fl">Client :</span><span class="fv" style="font-size:16px">${b.guest?.name ?? '—'}</span></div>
       ${b.guest?.id_number  ? `<div class="f"><span class="fl">Civil / Passport ID :</span><span class="fv">${b.guest.id_number}</span></div>` : ''}
       ${b.guest?.nationality? `<div class="f"><span class="fl">Nationality :</span><span class="fv">${b.guest.nationality}</span></div>` : ''}
       ${b.guest?.phone      ? `<div class="f"><span class="fl">Phone :</span><span class="fv">${b.guest.phone}</span></div>` : ''}
@@ -550,8 +630,18 @@ export default function Bookings() {
               </Tooltip>
             )}
           </div>
-          <div style={{ fontSize: 11, color: '#8c8c8c' }}>
-            {r.check_in_time ? `${r.check_in_time} · ` : ''}{r.nights}n · {r.num_guests ?? 1} guest{(r.num_guests ?? 1) > 1 ? 's' : ''}
+          <div style={{ fontSize: 11, color: '#8c8c8c', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>{r.check_in_time ? `${r.check_in_time} · ` : ''}{r.nights}n · {r.num_guests ?? 1} guest{(r.num_guests ?? 1) > 1 ? 's' : ''}</span>
+            {r.nights_change === 'extended' && (
+              <Tooltip title={`Originally ${r.original_nights}n`}>
+                <Tag color="green" style={{ margin: 0, fontSize: 10, lineHeight: '14px', padding: '0 4px' }}>Extended</Tag>
+              </Tooltip>
+            )}
+            {r.nights_change === 'shortened' && (
+              <Tooltip title={`Originally ${r.original_nights}n`}>
+                <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '14px', padding: '0 4px' }}>Shortened</Tag>
+              </Tooltip>
+            )}
           </div>
         </div>
       ),
@@ -746,16 +836,13 @@ export default function Bookings() {
               <Button block icon={<UnorderedListOutlined />} style={{ color: '#8B6914', borderColor: '#C9A96E' }} onClick={() => { openConfirmation(actionRow); setActionRow(null); }}>
                 View Confirmation PDF
               </Button>
-              <Tooltip title={Number(actionRow?.paid_amount) > 0 ? 'This booking has payments recorded. Delete all payments first (View Details → Payment History) before editing.' : ''}>
-                <Button
-                  block
-                  icon={<EditOutlined />}
-                  disabled={Number(actionRow?.paid_amount) > 0}
-                  onClick={() => { openEdit(actionRow); setActionRow(null); }}
-                >
-                  Edit Booking
-                </Button>
-              </Tooltip>
+              <Button
+                block
+                icon={<EditOutlined />}
+                onClick={() => { openEdit(actionRow); setActionRow(null); }}
+              >
+                Edit Booking
+              </Button>
               <Button block icon={<DollarOutlined />} onClick={() => { setSelected(actionRow); setPayModalOpen(true); setActionRow(null); }}>
                 Add Payment
               </Button>
@@ -819,7 +906,7 @@ export default function Bookings() {
               )}
               <Popconfirm
                 title="Delete this booking?"
-                onConfirm={() => { remove.mutate(actionRow.id); setActionRow(null); }}
+                onConfirm={() => remove.mutate(actionRow.id)}
                 okText="Delete"
                 cancelText="Cancel"
                 okButtonProps={{ danger: true }}
@@ -843,8 +930,13 @@ export default function Bookings() {
         <Form form={form} layout="vertical" onFinish={onFormFinish}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="villa_id" label="Villa" rules={[{ required: true }]}>
-                <Select placeholder="Select villa" showSearch optionFilterProp="children" onChange={handleVillaChange}>
+              <Form.Item
+                name="villa_id"
+                label="Villa"
+                rules={[{ required: true }]}
+                tooltip={editing ? 'Villa cannot be changed after a booking is created — cancel and create a new booking instead.' : undefined}
+              >
+                <Select placeholder="Select villa" showSearch optionFilterProp="children" onChange={handleVillaChange} disabled={!!editing}>
                   {villas?.map(v => (
                     <Option key={v.id} value={v.id}>
                       {v.name}{v.num_rooms ? ` · ${v.num_rooms} rooms` : ''}
@@ -859,8 +951,13 @@ export default function Bookings() {
               )}
             </Col>
             <Col span={12}>
-              <Form.Item name="guest_id" label="Guest" rules={[{ required: true }]}>
-                <Select placeholder="Select guest" showSearch optionFilterProp="children">
+              <Form.Item
+                name="guest_id"
+                label="Guest"
+                rules={[{ required: true }]}
+                tooltip={editing ? 'Guest cannot be changed after a booking is created — cancel and create a new booking instead.' : undefined}
+              >
+                <Select placeholder="Select guest" showSearch optionFilterProp="children" disabled={!!editing}>
                   {guests?.map(g => <Option key={g.id} value={g.id}>{g.name}{g.phone ? ` — ${g.phone}` : ''}</Option>)}
                 </Select>
               </Form.Item>
@@ -1041,10 +1138,10 @@ export default function Bookings() {
         centered
         width={360}
         closable={waModal.owner !== null || waModal.tenant !== null || waModal.user !== null}
-        onCancel={() => setWaModal({ open: false, owner: null, tenant: null, user: null })}
+        onCancel={() => setWaModal(prev => ({ open: false, owner: null, tenant: null, user: null, title: prev.title }))}
         footer={
           (waModal.owner !== null || waModal.tenant !== null || waModal.user !== null) ? (
-            <Button type="primary" onClick={() => setWaModal({ open: false, owner: null, tenant: null, user: null })}>
+            <Button type="primary" onClick={() => setWaModal(prev => ({ open: false, owner: null, tenant: null, user: null, title: prev.title }))}>
               Done
             </Button>
           ) : null
@@ -1052,7 +1149,7 @@ export default function Bookings() {
         title={
           <Space>
             <CheckCircleOutlined style={{ color: '#52c41a' }} />
-            <span>Booking Created</span>
+            <span>{waModal.title}</span>
           </Space>
         }
       >
@@ -1135,7 +1232,15 @@ export default function Bookings() {
                 {dayjs(bookingDetail.check_in).format('YYYY-MM-DD')}{bookingDetail.check_in_time ? ` @ ${bookingDetail.check_in_time}` : ''}
               </Descriptions.Item>
               <Descriptions.Item label="Check Out">{dayjs(bookingDetail.check_out).format('YYYY-MM-DD')}</Descriptions.Item>
-              <Descriptions.Item label="Nights">{bookingDetail.nights}</Descriptions.Item>
+              <Descriptions.Item label="Nights">
+                {bookingDetail.nights}
+                {bookingDetail.nights_change === 'extended' && (
+                  <Tag color="green" style={{ marginLeft: 8 }}>Extended (was {bookingDetail.original_nights}n)</Tag>
+                )}
+                {bookingDetail.nights_change === 'shortened' && (
+                  <Tag color="orange" style={{ marginLeft: 8 }}>Shortened (was {bookingDetail.original_nights}n)</Tag>
+                )}
+              </Descriptions.Item>
               <Descriptions.Item label="Status">
                 <Tag color={statusColors[bookingDetail.status]}>{statusLabels[bookingDetail.status]}</Tag>
               </Descriptions.Item>
@@ -1191,6 +1296,111 @@ export default function Bookings() {
                 />
               </>
             )}
+          </>
+        )}
+      </Modal>
+
+      {/* Shrink-booking payment guard */}
+      <Modal
+        title="Existing Payments Must Be Cleared First"
+        open={shrinkWarningOpen}
+        onCancel={() => setShrinkWarningOpen(false)}
+        footer={<Button onClick={() => setShrinkWarningOpen(false)}>Close</Button>}
+        width={560}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="Reducing the number of nights requires clearing existing payments first."
+          description="Delete the payments below, then reopen Edit Booking and save the shorter stay again."
+          style={{ marginBottom: 12 }}
+        />
+        <Table
+          size="small"
+          dataSource={bookingDetail?.payments ?? []}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            { title: 'Amount', dataIndex: 'amount', render: v => `${Number(v).toLocaleString()} OMR` },
+            { title: 'Date', dataIndex: 'payment_date', render: d => dayjs(d).format('YYYY-MM-DD') },
+            { title: 'Method', dataIndex: 'method', render: m => methodLabels[m] ?? m },
+            { title: 'Recorded By', dataIndex: ['user', 'name'], render: v => v || '—' },
+            {
+              title: '', key: 'actions', width: 40,
+              render: (_, p) => (
+                <Popconfirm
+                  title="Delete this payment?"
+                  description="This will reduce the booking's paid amount and cannot be undone."
+                  onConfirm={() => deletePayment.mutate(p.id)}
+                  okText="Delete"
+                  okButtonProps={{ danger: true }}
+                  cancelText="Cancel"
+                >
+                  <Button
+                    size="small"
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={deletePayment.isPending && deletePayment.variables === p.id}
+                  />
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </Modal>
+
+      {/* Extend-booking confirmation */}
+      <Modal
+        title={
+          <Space>
+            <FieldTimeOutlined style={{ color: '#1677ff' }} />
+            <span>Confirm Extend — {extendConfirm?.villaName}</span>
+          </Space>
+        }
+        open={!!extendConfirm}
+        onCancel={() => setExtendConfirm(null)}
+        onOk={() => { save.mutate(extendConfirm.payload); setExtendConfirm(null); }}
+        confirmLoading={save.isPending}
+        okText="Confirm Extend"
+        width={420}
+      >
+        {extendConfirm && (
+          <>
+            <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 6, fontSize: 13 }}>
+              <div><span style={{ color: '#8c8c8c' }}>Guest: </span><strong>{extendConfirm.guestName}</strong></div>
+              <div>
+                <span style={{ color: '#8c8c8c' }}>Current: </span>
+                {dayjs(extendConfirm.oldCheckIn).format('DD MMM YYYY')} → {dayjs(extendConfirm.oldCheckOut).format('DD MMM YYYY')}
+                {' '}({extendConfirm.oldNights}n · OMR {extendConfirm.oldTotal.toLocaleString()})
+              </div>
+              <div>
+                <span style={{ color: '#8c8c8c' }}>New checkout: </span>
+                <strong>{dayjs(extendConfirm.newCheckOut).format('DD MMM YYYY')}</strong>
+              </div>
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'stretch',
+              background: '#f6ffed', border: '1px solid #b7eb8f',
+              borderRadius: 8, padding: '9px 10px',
+            }}>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>New Nights</Text>
+                <Text strong style={{ fontSize: 14 }}>{extendConfirm.newNights}n</Text>
+              </div>
+              <div style={{ width: 1, background: 'rgba(0,0,0,0.06)' }} />
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>New Total</Text>
+                <Text strong style={{ fontSize: 14 }}>OMR {extendConfirm.newTotal.toLocaleString()}</Text>
+              </div>
+              <div style={{ width: 1, background: 'rgba(0,0,0,0.06)' }} />
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Difference</Text>
+                <Text strong style={{ fontSize: 14, color: extendConfirm.diff >= 0 ? '#389e0d' : '#cf1322' }}>
+                  {extendConfirm.diff >= 0 ? '+' : ''}OMR {extendConfirm.diff.toLocaleString()}
+                </Text>
+              </div>
+            </div>
           </>
         )}
       </Modal>

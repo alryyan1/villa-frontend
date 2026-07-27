@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Card, Tabs, Form, Input, Button, App, Switch, Descriptions, Skeleton, Space, Typography, Divider, Select, Row, Col, Upload } from 'antd';
-import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined, FileProtectOutlined, UploadOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, BellOutlined, WhatsAppOutlined, ClockCircleOutlined, FileProtectOutlined, UploadOutlined, FieldTimeOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -158,6 +158,49 @@ function StampUpload({ data }) {
   );
 }
 
+function ManagementLogoUpload({ data }) {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: (file) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      return client.post('/settings/management-logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      message.success('Management logo uploaded.');
+    },
+    onError: (err) => message.error(err.response?.data?.message ?? 'Failed to upload management logo.'),
+  });
+
+  return (
+    <div>
+      {data?.management_logo_url && (
+        <div style={{ marginBottom: 8 }}>
+          <img
+            src={data.management_logo_url}
+            alt="Management logo"
+            style={{ maxHeight: 90, maxWidth: 180, border: '1px solid #eee', padding: 4, display: 'block' }}
+          />
+        </div>
+      )}
+      <Upload
+        accept="image/*"
+        showUploadList={false}
+        beforeUpload={(file) => { mutate(file); return false; }}
+      >
+        <Button icon={<UploadOutlined />} loading={isPending}>
+          {data?.management_logo_url ? 'Replace Management Logo' : 'Upload Management Logo'}
+        </Button>
+      </Upload>
+    </div>
+  );
+}
+
 function NotificationsTab() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -190,6 +233,18 @@ function NotificationsTab() {
       guest_pending_booking_template_has_button: data.guest_pending_booking_template_has_button === '1',
       user_booking_template_has_button: data.user_booking_template_has_button === '1',
       owner_self_booking_template_has_button: data.owner_self_booking_template_has_button === '1',
+      guest_extend_booking_template:      data.guest_extend_booking_template      ?? '',
+      guest_extend_booking_template_lang: data.guest_extend_booking_template_lang ?? 'ar',
+      user_extend_booking_template:       data.user_extend_booking_template       ?? '',
+      user_extend_booking_template_lang:  data.user_extend_booking_template_lang  ?? 'ar',
+      owner_extend_booking_template:      data.owner_extend_booking_template      ?? '',
+      owner_extend_booking_template_lang: data.owner_extend_booking_template_lang ?? 'ar',
+      owner_self_extend_booking_template:      data.owner_self_extend_booking_template      ?? '',
+      owner_self_extend_booking_template_lang: data.owner_self_extend_booking_template_lang ?? 'ar',
+      cancel_booking_template:      data.cancel_booking_template      ?? '',
+      cancel_booking_template_lang: data.cancel_booking_template_lang ?? 'en',
+      edit_booking_template:      data.edit_booking_template      ?? '',
+      edit_booking_template_lang: data.edit_booking_template_lang ?? 'ar',
     });
   }
 
@@ -414,6 +469,95 @@ function NotificationsTab() {
           <Switch checkedChildren="Has Download PDF button" unCheckedChildren="No Download PDF button" />
         </Form.Item>
 
+        <Divider style={{ margin: '4px 0 16px' }}>Extend Booking Templates</Divider>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <FieldTimeOutlined style={{ color: '#1677ff', marginRight: 6 }} />Owner Extend Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> previous check-out, <Text code>{'{{4}}'}</Text> new check-out,{' '}
+          <Text code>{'{{5}}'}</Text> extra nights, <Text code>{'{{6}}'}</Text> new total,{' '}
+          <Text code>{'{{7}}'}</Text> new commission, <Text code>{'{{8}}'}</Text> new net.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="owner_extend_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_extend_owner" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="owner_extend_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <FieldTimeOutlined style={{ color: '#8B6914', marginRight: 6 }} />Owner Self-Extend Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Sent instead of the Owner Extend Template above when the owner extends their own booking (no commission).{' '}
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> previous check-out, <Text code>{'{{4}}'}</Text> new check-out,{' '}
+          <Text code>{'{{5}}'}</Text> extra nights, <Text code>{'{{6}}'}</Text> new total.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="owner_self_extend_booking_template" label="Template Name">
+              <Input placeholder="e.g. owner_booking_extend" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="owner_self_extend_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <FieldTimeOutlined style={{ color: '#25D366', marginRight: 6 }} />Guest Extend Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> previous check-out, <Text code>{'{{4}}'}</Text> new check-out,{' '}
+          <Text code>{'{{5}}'}</Text> extra nights, <Text code>{'{{6}}'}</Text> new total,{' '}
+          <Text code>{'{{7}}'}</Text> reception phone 1, <Text code>{'{{8}}'}</Text> reception phone 2.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="guest_extend_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_extend_guest" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="guest_extend_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <FieldTimeOutlined style={{ color: '#1677ff', marginRight: 6 }} />User (Staff) Extend Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Params: <Text code>{'{{1}}'}</Text> villa, <Text code>{'{{2}}'}</Text> booking ID,{' '}
+          <Text code>{'{{3}}'}</Text> guest phone, <Text code>{'{{4}}'}</Text> new check-out,{' '}
+          <Text code>{'{{5}}'}</Text> extra nights, <Text code>{'{{6}}'}</Text> remaining amount.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="user_extend_booking_template" label="Template Name">
+              <Input placeholder="e.g. villa_booking_extend_user" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="user_extend_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
         <Text strong style={{ display: 'block', marginBottom: 4 }}>
           <ClockCircleOutlined style={{ color: '#fa8c16', marginRight: 6 }} />Checkout Reminder Template
         </Text>
@@ -428,6 +572,52 @@ function NotificationsTab() {
           </Col>
           <Col span={9}>
             <Form.Item name="guest_checkout_reminder_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Divider style={{ margin: '4px 0 16px' }}>Cancel Booking Template</Divider>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <WhatsAppOutlined style={{ color: '#ff4d4f', marginRight: 6 }} />Cancel Booking Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Sent to the owner, tenant, and staff member when a booking is deleted/cancelled — same template for all three,{' '}
+          only <Text code>{'{{1}}'}</Text> differs per recipient.{' '}
+          Params: <Text code>{'{{1}}'}</Text> recipient name, <Text code>{'{{2}}'}</Text> villa, <Text code>{'{{3}}'}</Text> check-in date.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="cancel_booking_template" label="Template Name">
+              <Input placeholder="e.g. cancel_booking" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="cancel_booking_template_lang" label="Language">
+              <Select options={LANG_OPTIONS} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>
+          <WhatsAppOutlined style={{ color: '#1677ff', marginRight: 6 }} />Edit Booking Template
+        </Text>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          Sent to the owner, tenant, and staff member on any booking edit that is <Text code>not</Text> an extension{' '}
+          (extensions use the Extend Booking Templates below instead) — same template for all three recipients.{' '}
+          Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
+          <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,{' '}
+          <Text code>{'{{5}}'}</Text> total, <Text code>{'{{6}}'}</Text> reception phone 1, <Text code>{'{{7}}'}</Text> reception phone 2.
+        </Text>
+        <Row gutter={12}>
+          <Col span={15}>
+            <Form.Item name="edit_booking_template" label="Template Name">
+              <Input placeholder="e.g. edit_booking" />
+            </Form.Item>
+          </Col>
+          <Col span={9}>
+            <Form.Item name="edit_booking_template_lang" label="Language">
               <Select options={LANG_OPTIONS} />
             </Form.Item>
           </Col>
@@ -460,6 +650,15 @@ function NotificationsTab() {
         Uploaded here, it replaces the "Authorized Stamp &amp; Signature" placeholder on the booking confirmation.
       </Text>
       <StampUpload data={data} />
+
+      <Divider orientation="left" style={{ marginTop: 24 }}>
+        <FileProtectOutlined style={{ marginRight: 6 }} />
+        Confirmation PDF Management Logo
+      </Divider>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+        Uploaded here, it appears next to the Al Seef logo in the booking confirmation header.
+      </Text>
+      <ManagementLogoUpload data={data} />
 
       <Divider orientation="left" style={{ marginTop: 24 }}>
         <WhatsAppOutlined style={{ marginRight: 6 }} />

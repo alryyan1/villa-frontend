@@ -5,6 +5,7 @@ import {
   Drawer, Modal, Form, Select, DatePicker, Input, InputNumber, Button,
   Tag, Typography, Space, Alert, Spin, Tooltip, Dropdown,
   Radio, App, Divider, Card, Empty, Row, Col, Avatar, Badge, Steps, Checkbox,
+  Calendar,
 } from 'antd';
 import type { InputRef, MenuProps } from 'antd';
 import {
@@ -14,7 +15,8 @@ import {
   ToolOutlined, CheckCircleOutlined, CloseCircleOutlined,
   LoginOutlined, LogoutOutlined, WhatsAppOutlined,
   ClockCircleOutlined, TeamOutlined, InfoCircleOutlined,
-  FileTextOutlined,
+  FileTextOutlined, FieldTimeOutlined,
+  LeftOutlined, RightOutlined, StopOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -30,7 +32,7 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 // ─── Domain types ──────────────────────────────────────────────────────────
-type VillaStatus = 'available' | 'occupied' | 'maintenance';
+type VillaStatus = 'available' | 'occupied' | 'maintenance' | 'blocked';
 type BookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'completed';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 type PaymentMethod = 'cash' | 'card' | 'bank_transfer';
@@ -82,6 +84,8 @@ interface Booking {
   checked_in_at?: string | null;
   checked_out_at?: string | null;
   nights: number;
+  original_nights?: number | null;
+  nights_change?: 'extended' | 'shortened' | null;
   total_amount: number | string;
   paid_amount?: number | string;
   payment_status: PaymentStatus;
@@ -159,6 +163,11 @@ const STATUS_CFG: Record<VillaStatus, { color: string; bg: string; border: strin
   available: { color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f', label: 'Available' },
   occupied: { color: '#cf1322', bg: '#fff1f0', border: '#ffa39e', label: 'Occupied' },
   maintenance: { color: '#531dab', bg: '#f9f0ff', border: '#d3adf7', label: 'Maintenance' },
+  // color is also used as-is for the drawer's status Tag background (AntD auto-picks
+  // white text for a custom Tag color), so it stays black here — the tile's own
+  // number text gets a special-cased white override below since black-on-black
+  // would otherwise be invisible against this status's black tile background.
+  blocked: { color: '#000000', bg: '#000000', border: '#000000', label: 'Blocked' },
 };
 const UNCONFIGURED = { color: '#bfbfbf', bg: '#fafafa', border: '#d9d9d9', label: 'Not configured' };
 
@@ -225,6 +234,9 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
   const hasBalanceDue = villa?.status === 'occupied' && !!villa.active_booking_payment && villa.active_booking_payment !== 'paid';
   // console.log('VillaTile', 'number', number, 'villa', villa, 'highlight', highlight, 'dimmed', dimmed, 'checkingIn', checkingIn, 'awaitingArrival', awaitingArrival);
   const cfg = (villa?.status ? STATUS_CFG[villa.status] : undefined) ?? UNCONFIGURED;
+  // "blocked" is a solid black tile — cfg.color is black too (needed for the drawer's
+  // Tag, which uses it as a background), so it can't double as this tile's text color.
+  const tileTextColor = villa?.status === 'blocked' ? '#ffffff' : cfg.color;
 
   // Stay progress: 0 on check-in day, 1 once check-out day is reached.
   let stayProgress: number | null = null;
@@ -257,7 +269,7 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
         border: `2px solid ${focused ? '#1677ff' : awaitingArrival ? '#fa8c16' : checkingOutToday ? '#13c2c2' : cfg.border}`,
         borderRadius: 8,
         background: dimmed ? '#f5f5f5' : cfg.bg,
-        color: dimmed ? '#d9d9d9' : cfg.color,
+        color: dimmed ? '#d9d9d9' : tileTextColor,
         cursor: villa ? 'pointer' : 'default',
         opacity: dimmed ? 0.28 : 1,
         display: 'flex',
@@ -283,7 +295,7 @@ function VillaTile({ number, villa, highlight, dimmed, selected, showBookingBadg
           top: 3,
           left: 4,
           fontSize: 10,
-          color: cfg.color,
+          color: tileTextColor,
           opacity: 0.85,
         }} />
       )}
@@ -466,6 +478,7 @@ export default function VillaMap() {
       available: active.filter(v => v.status === 'available').length,
       occupied: active.filter(v => v.status === 'occupied').length,
       maintenance: active.filter(v => v.status === 'maintenance').length,
+      blocked: active.filter(v => v.status === 'blocked').length,
       contractActive: active.length,
     };
   }, [villasData]);
@@ -515,6 +528,127 @@ export default function VillaMap() {
       setCheckingAvailability(false);
     }
   };
+
+  // ── Villa calendar ─────────────────────────────────────────────────────────
+  const [villaCalendarOpen, setVillaCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Dayjs>(dayjs());
+
+  const { data: villaCalendarBookings, isFetching: villaCalendarLoading } = useQuery<Booking[]>({
+    queryKey: ['villa-calendar', selectedVilla?.id, calendarMonth.format('YYYY-MM')],
+    queryFn: () =>
+      client.get(`/villas/${selectedVilla?.id}/calendar`, { params: { month: calendarMonth.format('YYYY-MM') } })
+        .then((r: any) => r.data),
+    enabled: !!selectedVilla?.id && villaCalendarOpen,
+  });
+
+  const BOOKING_STATUS_BG: Record<string, string> = {
+    confirmed: '#52c41a',
+    pending: '#fa8c16',
+    completed: '#1677ff',
+  };
+
+  const villaCalendarDayBookings = (date: Dayjs): Booking[] => {
+    const dayStr = date.format('YYYY-MM-DD');
+    return (villaCalendarBookings || []).filter(b =>
+      b.status !== 'cancelled' && dayStr >= b.check_in && dayStr <= b.check_out,
+    );
+  };
+
+  const villaCalendarCellRender = (current: Dayjs, info: { type: string; originNode: ReactNode }) => {
+    if (info.type !== 'date') return info.originNode;
+    const dayBookings = villaCalendarDayBookings(current);
+    const primary = dayBookings[0];
+    const bg = primary ? BOOKING_STATUS_BG[primary.status] : undefined;
+    // AntD already renders the day-of-month number itself (before cellRender's
+    // return value is inserted below it) — adding our own here would duplicate it.
+    // The row height itself is fixed by the Calendar's dateContentHeight theme
+    // token (set via ConfigProvider around the Calendar below), not by this div.
+    return (
+      <div style={{
+        borderRadius: 4, padding: '0 4px',
+        background: bg ? `${bg}22` : undefined,
+        border: bg ? `1px solid ${bg}55` : undefined,
+      }}>
+        {dayBookings.map(b => (
+          <Tooltip key={b.id} title={`${b.guest?.name ?? ''} · ${dayjs(b.check_in).format('DD MMM')} → ${dayjs(b.check_out).format('DD MMM')}`}>
+            <div style={{
+              fontSize: 9, lineHeight: '14px',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              color: bg ?? '#595959', fontWeight: 600,
+            }}>
+              #{b.id} · OMR {Number(b.total_amount).toLocaleString()}
+            </div>
+          </Tooltip>
+        ))}
+      </div>
+    );
+  };
+
+  // ── Extend booking ────────────────────────────────────────────────────────
+  const [extendModalOpen, setExtendModalOpen] = useState(false);
+  const [extendForm] = Form.useForm<{ check_out: Dayjs }>();
+  const [extendAvailability, setExtendAvailability] = useState<boolean | null>(null);
+  const [extendConflicts, setExtendConflicts] = useState<BookingConflict[]>([]);
+  const [extendChecking, setExtendChecking] = useState(false);
+  const extendCheckOutWatch = Form.useWatch('check_out', extendForm);
+
+  const openExtendModal = () => {
+    if (!currentBooking) return;
+    extendForm.resetFields();
+    setExtendAvailability(null);
+    setExtendConflicts([]);
+    setExtendModalOpen(true);
+  };
+
+  const checkExtendAvailability = async (newCheckOut: Dayjs | null) => {
+    if (!selectedVilla || !currentBooking || !newCheckOut) return;
+    setExtendAvailability(null);
+    setExtendConflicts([]);
+    setExtendChecking(true);
+    try {
+      const res = await client.post('/bookings/check-availability', {
+        villa_id: selectedVilla.id,
+        check_in: currentBooking.check_in,
+        check_out: newCheckOut.format('YYYY-MM-DD'),
+        booking_id: currentBooking.id,
+      });
+      setExtendAvailability(res.data.available);
+      setExtendConflicts(res.data.conflicts ?? []);
+    } catch { }
+    finally {
+      setExtendChecking(false);
+    }
+  };
+
+  const extendPreview = useMemo(() => {
+    if (!currentBooking || !selectedVilla || !extendCheckOutWatch) return null;
+    const newNights = dayjs(extendCheckOutWatch).diff(dayjs(currentBooking.check_in), 'day');
+    if (newNights <= 0) return null;
+    const newTotal = newNights * Number(selectedVilla.price_per_night || 0);
+    return { newNights, newTotal, diff: newTotal - Number(currentBooking.total_amount) };
+  }, [currentBooking, selectedVilla, extendCheckOutWatch]);
+
+  const extendBooking = useMutation({
+    mutationFn: ({ bookingId, check_out }: { bookingId: number; check_out: string }) =>
+      client.put(`/bookings/${bookingId}`, { check_out }),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['villas-map'] });
+      qc.invalidateQueries({ queryKey: ['villa-bookings', selectedVilla?.id] });
+      message.success('Booking extended.');
+      setExtendModalOpen(false);
+      extendForm.resetFields();
+      setExtendAvailability(null);
+      setExtendConflicts([]);
+
+      setWaModal({ open: true, owner: null, tenant: null, user: null });
+      setTimeout(() => {
+        const wa = res.data?.whatsapp ?? {};
+        const unknown: WaStatus = { sent: false, error: 'No status returned' };
+        setWaModal({ open: true, owner: wa.owner ?? unknown, tenant: wa.tenant ?? unknown, user: wa.user ?? unknown });
+      }, 1000);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message || 'Failed to extend booking.'),
+  });
 
   // ── Create booking ────────────────────────────────────────────────────────
   const [progressToken, setProgressToken] = useState<string | null>(null);
@@ -640,6 +774,10 @@ export default function VillaMap() {
           key: 'maint', icon: <ToolOutlined />, label: 'Set to Maintenance', danger: true,
           onClick: () => updateVillaStatus.mutate({ id: villa.id, status: 'maintenance' })
         },
+        {
+          key: 'block', icon: <StopOutlined />, label: 'Block Villa', danger: true,
+          onClick: () => updateVillaStatus.mutate({ id: villa.id, status: 'blocked' })
+        },
       );
     }
 
@@ -666,6 +804,15 @@ export default function VillaMap() {
       items.push(
         {
           key: 'avail', icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />, label: 'Mark as Available',
+          onClick: () => updateVillaStatus.mutate({ id: villa.id, status: 'available' })
+        },
+      );
+    }
+
+    if (villa.status === 'blocked') {
+      items.push(
+        {
+          key: 'avail', icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />, label: 'Unblock (Mark as Available)',
           onClick: () => updateVillaStatus.mutate({ id: villa.id, status: 'available' })
         },
       );
@@ -762,6 +909,11 @@ export default function VillaMap() {
                 setBookingModalOpen(false);
                 return;
               }
+              if (v.status === 'blocked') {
+                message.warning('Villa is blocked. Cannot create booking.');
+                setBookingModalOpen(false);
+                return;
+              }
               setBookingModalOpen(v?.status != 'occupied');
               // setOpenGuestModal(true);
               //open guest modal if villa is not occupied
@@ -826,6 +978,9 @@ export default function VillaMap() {
           <Radio.Button value="maintenance" style={statusFilter !== 'maintenance' ? { color: '#ff4d4f' } : {}}>
             Maint ({stats.maintenance})
           </Radio.Button>
+          <Radio.Button value="blocked" style={statusFilter !== 'blocked' ? { color: '#000000' } : {}}>
+            Blocked ({stats.blocked})
+          </Radio.Button>
         </Radio.Group>
         <Button
           size="small"
@@ -878,6 +1033,7 @@ export default function VillaMap() {
     { key: 'available', dot: '#52c41a', desc: `Available — free for ${isToday ? 'today' : rangeLabel}` },
     { key: 'occupied', dot: '#cf1322', desc: `Occupied — a booking overlaps ${isToday ? 'today' : rangeLabel}` },
     { key: 'maintenance', dot: '#531dab', desc: 'Maintenance — manually set by staff' },
+    { key: 'blocked', dot: '#000000', desc: 'Blocked — bookings disabled, manually set by staff' },
   ];
 
   return (
@@ -1080,8 +1236,12 @@ export default function VillaMap() {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              disabled={selectedVilla?.status === 'maintenance'}
-              title={selectedVilla?.status === 'maintenance' ? 'Villa is under maintenance' : undefined}
+              disabled={selectedVilla?.status === 'maintenance' || selectedVilla?.status === 'blocked'}
+              title={
+                selectedVilla?.status === 'maintenance' ? 'Villa is under maintenance'
+                  : selectedVilla?.status === 'blocked' ? 'Villa is blocked'
+                  : undefined
+              }
               onClick={() => { form.resetFields(); form.setFieldValue('price_per_night', String(selectedVilla?.price_per_night ?? '')); setBookingNights(0); setAvailability(null); setConflicts([]); setBookingModalOpen(true); }}
             >
               New Booking
@@ -1091,6 +1251,12 @@ export default function VillaMap() {
               onClick={() => { setDrawerOpen(false); navigate('/bookings', { state: { filterVillaId: selectedVilla?.id } }); }}
             >
               View Bookings
+            </Button>
+            <Button
+              icon={<CalendarOutlined />}
+              onClick={() => { setCalendarMonth(dayjs()); setVillaCalendarOpen(true); }}
+            >
+              Villa Calendar
             </Button>
             <Button
               icon={<HomeOutlined />}
@@ -1198,6 +1364,16 @@ export default function VillaMap() {
                   <Space size={4}>
                     <Tag color={statusColors[currentBooking.status]} style={{ margin: 0, fontSize: 11 }}>{currentBooking.status}</Tag>
                     <Tag color={payColors[currentBooking.payment_status]} style={{ margin: 0, fontSize: 11 }}>{payLabels[currentBooking.payment_status]}</Tag>
+                    {currentBooking.nights_change === 'extended' && (
+                      <Tooltip title={`Originally ${currentBooking.original_nights}n`}>
+                        <Tag color="green" style={{ margin: 0, fontSize: 11 }}>Extended</Tag>
+                      </Tooltip>
+                    )}
+                    {currentBooking.nights_change === 'shortened' && (
+                      <Tooltip title={`Originally ${currentBooking.original_nights}n`}>
+                        <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>Shortened</Tag>
+                      </Tooltip>
+                    )}
                   </Space>
                 </div>
                 {currentBooking.user?.name && (
@@ -1343,6 +1519,19 @@ export default function VillaMap() {
                     }}
                   >
                     Add Payment
+                  </Button>
+                </div>
+
+                {/* Extend booking */}
+                <div style={{ marginTop: 8 }}>
+                  <Button
+                    size="small"
+                    icon={<FieldTimeOutlined />}
+                    disabled={!!currentBooking.checked_out_at}
+                    onClick={openExtendModal}
+                    style={{ width: '100%' }}
+                  >
+                    Extend Booking
                   </Button>
                 </div>
               </div>
@@ -1978,6 +2167,160 @@ export default function VillaMap() {
             <Input placeholder="Optional note" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── Villa Calendar Modal ── */}
+      <Modal
+        title={
+          <Space>
+            <CalendarOutlined style={{ color: '#1677ff' }} />
+            <span>Villa Calendar — {selectedVilla?.name}</span>
+          </Space>
+        }
+        open={villaCalendarOpen}
+        onCancel={() => setVillaCalendarOpen(false)}
+        footer={null}
+        width={800}
+      >
+        <Spin spinning={villaCalendarLoading}>
+          <Calendar
+            className="villa-calendar-compact"
+            value={calendarMonth}
+            onChange={setCalendarMonth}
+            onPanelChange={setCalendarMonth}
+            cellRender={villaCalendarCellRender}
+            headerRender={({ value, onChange }) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 4px 12px' }}>
+                <Button icon={<LeftOutlined />} onClick={() => onChange(value.clone().subtract(1, 'month'))} />
+                <Text strong style={{ fontSize: 16 }}>{value.format('MMMM YYYY')}</Text>
+                <Button icon={<RightOutlined />} onClick={() => onChange(value.clone().add(1, 'month'))} />
+              </div>
+            )}
+          />
+        </Spin>
+        <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: '#595959' }}>
+          {Object.entries(BOOKING_STATUS_BG).map(([status, color]) => (
+            <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+              <span style={{ textTransform: 'capitalize' }}>{status}</span>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* ── Extend Booking Modal ── */}
+      <Modal
+        title={
+          <Space>
+            <FieldTimeOutlined style={{ color: '#1677ff' }} />
+            <span>Extend Booking — {selectedVilla?.name}</span>
+          </Space>
+        }
+        open={extendModalOpen}
+        onCancel={() => {
+          setExtendModalOpen(false);
+          extendForm.resetFields();
+          setExtendAvailability(null);
+          setExtendConflicts([]);
+        }}
+        onOk={() => extendForm.submit()}
+        confirmLoading={extendBooking.isPending}
+        okButtonProps={{ disabled: !currentBooking || extendChecking || extendAvailability !== true }}
+        okText="Extend"
+        width={420}
+      >
+        {currentBooking && (
+          <>
+            <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 6, fontSize: 13 }}>
+              <div><span style={{ color: '#8c8c8c' }}>Guest: </span><strong>{currentBooking.guest?.name}</strong></div>
+              <div>
+                <span style={{ color: '#8c8c8c' }}>Current: </span>
+                {dayjs(currentBooking.check_in).format('DD MMM YYYY')} → {dayjs(currentBooking.check_out).format('DD MMM YYYY')}
+                {' '}({currentBooking.nights}n · OMR {Number(currentBooking.total_amount).toLocaleString()})
+              </div>
+            </div>
+
+            <Form
+              form={extendForm}
+              layout="vertical"
+              onFinish={(vals) => {
+                if (!currentBooking || extendAvailability !== true) return;
+                extendBooking.mutate({ bookingId: currentBooking.id, check_out: vals.check_out.format('YYYY-MM-DD') });
+              }}
+            >
+              <Form.Item
+                name="check_out"
+                label="New Check-out Date"
+                extra="Bookings can be extended by up to 2 nights at a time."
+                rules={[{ required: true, message: 'Please select the new check-out date' }]}
+              >
+                <DatePicker
+                  style={{ width: '100%' }}
+                  format="DD MMM YYYY"
+                  disabledDate={(d) =>
+                    !d.isAfter(dayjs(currentBooking.check_out), 'day')
+                    || d.isAfter(dayjs(currentBooking.check_out).add(2, 'day'), 'day')
+                  }
+                  onChange={checkExtendAvailability}
+                />
+              </Form.Item>
+            </Form>
+
+            {extendChecking && (
+              <div style={{ textAlign: 'center', padding: 8 }}><Spin size="small" /></div>
+            )}
+
+            {!extendChecking && extendAvailability === true && (
+              <>
+                <Alert
+                  type="success"
+                  showIcon
+                  message="Villa is available for the extended period."
+                  style={{ marginBottom: 8 }}
+                />
+                {extendPreview && (
+                  <div style={{
+                    display: 'flex', alignItems: 'stretch',
+                    background: '#f6ffed', border: '1px solid #b7eb8f',
+                    borderRadius: 8, padding: '9px 10px',
+                  }}>
+                    <div style={{ textAlign: 'center', flex: 1 }}>
+                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>New Nights</Text>
+                      <Text strong style={{ fontSize: 14 }}>{extendPreview.newNights}n</Text>
+                    </div>
+                    <div style={{ width: 1, background: 'rgba(0,0,0,0.06)' }} />
+                    <div style={{ textAlign: 'center', flex: 1 }}>
+                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>New Total</Text>
+                      <Text strong style={{ fontSize: 14 }}>OMR {extendPreview.newTotal.toLocaleString()}</Text>
+                    </div>
+                    <div style={{ width: 1, background: 'rgba(0,0,0,0.06)' }} />
+                    <div style={{ textAlign: 'center', flex: 1 }}>
+                      <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Difference</Text>
+                      <Text strong style={{ fontSize: 14, color: extendPreview.diff >= 0 ? '#389e0d' : '#cf1322' }}>
+                        {extendPreview.diff >= 0 ? '+' : ''}OMR {extendPreview.diff.toLocaleString()}
+                      </Text>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {!extendChecking && extendAvailability === false && (
+              <Alert
+                type="error"
+                showIcon
+                message="Villa is already booked during part of this period."
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {extendConflicts.map(c => (
+                      <li key={c.id}>{c.guest_name ?? 'Unknown guest'}: {c.check_in} → {c.check_out} ({c.status})</li>
+                    ))}
+                  </ul>
+                }
+              />
+            )}
+          </>
+        )}
       </Modal>
 
       {/* ── Owner Info Modal ── */}

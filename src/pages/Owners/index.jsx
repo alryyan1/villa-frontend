@@ -14,7 +14,7 @@ import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 const { Text } = Typography;
 const { TextArea } = Input;
 
-const villaStatusColor = { available: 'green', occupied: 'orange', maintenance: 'red' };
+const villaStatusColor = { available: 'green', occupied: 'orange', maintenance: 'red', blocked: '#000000' };
 
 function VillasPopover({ owner }) {
   const [open, setOpen] = useState(false);

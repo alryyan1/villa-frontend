@@ -14,8 +14,8 @@ import { useHeaderToolbar } from '../../store/HeaderToolbarContext';
 const { Option } = Select;
 const { TextArea } = Input;
 
-const statusColors = { available: 'green', occupied: 'orange', maintenance: 'red' };
-const statusLabels = { available: 'Available', occupied: 'Occupied', maintenance: 'Maintenance' };
+const statusColors = { available: 'green', occupied: 'orange', maintenance: 'red', blocked: '#000000' };
+const statusLabels = { available: 'Available', occupied: 'Occupied', maintenance: 'Maintenance', blocked: 'Blocked' };
 
 const VILLA_TYPES = [
   { value: 'Seashell', label: 'Seashell — Unique living experience', defaultRooms: 3, color: '#531dab' },
@@ -338,6 +338,7 @@ export default function Villas() {
                 <Select>
                   <Option value="available">Available</Option>
                   <Option value="maintenance">Maintenance</Option>
+                  <Option value="blocked">Blocked</Option>
                 </Select>
               </Form.Item>
             </Col>
