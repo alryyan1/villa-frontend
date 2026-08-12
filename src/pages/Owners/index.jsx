@@ -5,7 +5,7 @@ import {
   Popconfirm, Card, Row, Col, App, Badge, Upload, Alert,
   Popover, Tag, Spin, Select,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined, HomeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, TeamOutlined, UploadOutlined, CopyOutlined, HomeOutlined, KeyOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
@@ -86,7 +86,9 @@ export default function Owners() {
 
   const [importOpen, setImportOpen] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [loginOwner, setLoginOwner] = useState(null);
   const [form] = Form.useForm();
+  const [loginForm] = Form.useForm();
   const qc = useQueryClient();
   const { message } = App.useApp();
   const { setToolbar, clearToolbar } = useHeaderToolbar();
@@ -121,6 +123,17 @@ export default function Owners() {
     mutationFn: (id) => client.delete(`/owners/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['owners'] }); message.success('Owner deleted.'); },
     onError: (e) => message.error(e.response?.data?.message || 'Cannot delete owner with villas.'),
+  });
+
+  const enableLogin = useMutation({
+    mutationFn: (vals) => client.post(`/owners/${loginOwner.id}/enable-login`, vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['owners'] });
+      message.success('Owner portal login enabled.');
+      setLoginOwner(null);
+      loginForm.resetFields();
+    },
+    onError: (e) => message.error(e.response?.data?.message || 'Failed to enable login.'),
   });
 
   const copyPhones = useMutation({
@@ -187,7 +200,10 @@ export default function Owners() {
   }, [data, location.state?.editOwnerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns = [
-    { title: '#', dataIndex: 'id', width: 60 },
+    {
+      title: 'Villa No', dataIndex: 'villas', width: 100,
+      render: (villas) => (villas?.length ? villas.map(v => v.name).join(', ') : '-'),
+    },
     { title: 'Name', dataIndex: 'name' },
     { title: 'Phone', dataIndex: 'phone', render: v => v || '-' },
     {
@@ -199,10 +215,24 @@ export default function Owners() {
     { title: 'Email', dataIndex: 'email', render: v => v || '-' },
     { title: 'Villas', dataIndex: 'villas_count', width: 80, render: (_, r) => <VillasPopover owner={r} /> },
     {
+      title: 'Portal Login', dataIndex: 'user_id', width: 130,
+      render: (userId) => userId
+        ? <Tag icon={<CheckCircleOutlined />} color="green">Enabled</Tag>
+        : <Tag color="default">Not enabled</Tag>,
+    },
+    {
       title: 'Actions', key: 'actions', render: (_, r) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          
+          {!r.user_id && (
+            <Button
+              size="small"
+              icon={<KeyOutlined />}
+              onClick={() => { setLoginOwner(r); loginForm.resetFields(); }}
+            >
+              Enable Login
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -313,6 +343,26 @@ export default function Owners() {
           </Form.Item>
           <Form.Item name="notes" label="Notes" style={{ marginBottom: 0 }}>
             <TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Enable Portal Login — ${loginOwner?.name ?? ''}`}
+        open={!!loginOwner}
+        onCancel={() => { setLoginOwner(null); loginForm.resetFields(); }}
+        onOk={() => loginForm.submit()}
+        confirmLoading={enableLogin.isPending}
+      >
+        <p style={{ color: '#666', marginBottom: 16 }}>
+          Creates a login for this owner so they can sign in and see only their own villas and bookings.
+        </p>
+        <Form form={loginForm} layout="vertical" onFinish={(v) => enableLogin.mutate(v)}>
+          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
+            <Input placeholder="owner@example.com" />
+          </Form.Item>
+          <Form.Item name="password" label="Password" rules={[{ required: true, min: 6, message: 'At least 6 characters' }]}>
+            <Input.Password />
           </Form.Item>
         </Form>
       </Modal>

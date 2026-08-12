@@ -225,7 +225,6 @@ function NotificationsTab() {
       owner_self_booking_template:      data.owner_self_booking_template      ?? '',
       owner_self_booking_template_lang: data.owner_self_booking_template_lang ?? 'ar',
       reception_phone_1:           data.reception_phone_1           ?? '',
-      reception_phone_2:           data.reception_phone_2           ?? '',
       guest_checkout_reminder_template:      data.guest_checkout_reminder_template      ?? '',
       guest_checkout_reminder_template_lang: data.guest_checkout_reminder_template_lang ?? 'ar',
       owner_booking_template_has_button: data.owner_booking_template_has_button === '1',
@@ -401,7 +400,7 @@ function NotificationsTab() {
         <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
           Params: <Text code>{'{{1}}'}</Text> booking ID, <Text code>{'{{2}}'}</Text> villa,{' '}
           <Text code>{'{{3}}'}</Text> check-in, <Text code>{'{{4}}'}</Text> check-out,{' '}
-          <Text code>{'{{5}}'}</Text> total, <Text code>{'{{6}}'}</Text> reception phone 1, <Text code>{'{{7}}'}</Text> reception phone 2.
+          <Text code>{'{{5}}'}</Text> total. Reception phone is a static Call button configured on the Meta template — not sent as a param.
         </Text>
         <Row gutter={12}>
           <Col span={15}>
@@ -623,16 +622,11 @@ function NotificationsTab() {
           </Col>
         </Row>
 
-        <Text strong style={{ display: 'block', marginBottom: 8 }}>Reception Phones (used in guest template &amp; confirmation PDF)</Text>
+        <Text strong style={{ display: 'block', marginBottom: 8 }}>Reception Phone (used in pending/extend/edit templates &amp; confirmation PDF)</Text>
         <Row gutter={12}>
           <Col span={12}>
-            <Form.Item name="reception_phone_1" label="Reception Phone 1">
+            <Form.Item name="reception_phone_1" label="Reception Phone">
               <Input placeholder="e.g. 76767769" />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="reception_phone_2" label="Reception Phone 2">
-              <Input placeholder="e.g. 76767768" />
             </Form.Item>
           </Col>
         </Row>

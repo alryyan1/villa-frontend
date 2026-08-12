@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './store/AuthContext';
 import { ThemeProvider, useTheme } from './store/ThemeContext';
 import { canAccessPage } from './utils/permissions';
 import AppLayout from './components/AppLayout';
+import OwnerPortalLayout from './components/OwnerPortalLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Villas from './pages/Villas';
@@ -22,6 +23,9 @@ import ActivityLogs from './pages/ActivityLogs';
 import VillaMap from './pages/VillaMap';
 import Maintenance from './pages/Maintenance';
 import Settings from './pages/Settings';
+import OwnerDashboard from './pages/OwnerPortal/Dashboard';
+import OwnerMyVillas from './pages/OwnerPortal/MyVillas';
+import OwnerMyBookings from './pages/OwnerPortal/MyBookings';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
@@ -29,7 +33,18 @@ const queryClient = new QueryClient({
 
 function PrivateRoute({ children }) {
   const { user } = useAuth();
-  return user ? children : <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  // Owners have a fully separate /owner tree — never fall through to the
+  // staff AppLayout/PageGuard system, which grants broad access by default.
+  if (user.role === 'owner') return <Navigate to="/owner" replace />;
+  return children;
+}
+
+function OwnerRoute({ children }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'owner') return <Navigate to="/" replace />;
+  return children;
 }
 
 function PageGuard({ pageKey, children }) {
@@ -42,9 +57,10 @@ function PageGuard({ pageKey, children }) {
 
 function AppRoutes() {
   const { user } = useAuth();
+  const postLoginPath = user?.role === 'owner' ? '/owner' : '/';
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={postLoginPath} /> : <Login />} />
       <Route path="/" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
         <Route index element={<PageGuard pageKey="/"><Dashboard /></PageGuard>} />
         <Route path="villas" element={<PageGuard pageKey="/villas"><Villas /></PageGuard>} />
@@ -62,6 +78,11 @@ function AppRoutes() {
         <Route path="map" element={<PageGuard pageKey="/map"><VillaMap /></PageGuard>} />
         <Route path="maintenance" element={<PageGuard pageKey="/maintenance"><Maintenance /></PageGuard>} />
         <Route path="settings" element={<PageGuard pageKey="/settings"><Settings /></PageGuard>} />
+      </Route>
+      <Route path="/owner" element={<OwnerRoute><OwnerPortalLayout /></OwnerRoute>}>
+        <Route index element={<OwnerDashboard />} />
+        <Route path="villas" element={<OwnerMyVillas />} />
+        <Route path="bookings" element={<OwnerMyBookings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

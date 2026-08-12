@@ -17,8 +17,8 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      await login(email, password);
-      navigate('/');
+      const loggedInUser = await login(email, password);
+      navigate(loggedInUser.role === 'owner' ? '/owner' : '/');
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid email or password.');
     } finally {

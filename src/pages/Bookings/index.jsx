@@ -10,7 +10,7 @@ import {
   UnorderedListOutlined,
   WhatsAppOutlined
 } from '@ant-design/icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   App,
@@ -36,7 +36,7 @@ import {
   Typography,
 } from 'antd';
 import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import client from '../../api/client';
 import { usePageTitle } from '../../hooks/usePageTitle';
@@ -76,6 +76,7 @@ export default function Bookings() {
   const [filterGuest, setFilterGuest]   = useState(null);
   const [filterVilla, setFilterVilla]   = useState(null);
   const [filterDates, setFilterDates]   = useState(null);
+  const tableBodyRef = useRef(null);
   const [waModal, setWaModal] = useState({ open: false, owner: null, tenant: null, user: null, title: 'Booking Created' });
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
@@ -113,17 +114,44 @@ export default function Bookings() {
     queryFn: () => client.get('/settings').then(r => r.data),
   });
 
-  const { data, isLoading } = useQuery({
+  const {
+    data: bookingPages,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['bookings', filterGuest, filterVilla, filterDates],
-    queryFn: () => client.get('/bookings', {
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => client.get('/bookings', {
       params: {
+        page: pageParam,
         ...(filterGuest  ? { guest_id: filterGuest } : {}),
         ...(filterVilla  ? { villa_id: filterVilla } : {}),
         ...(filterDates?.[0] ? { from: filterDates[0].format('YYYY-MM-DD') } : {}),
         ...(filterDates?.[1] ? { to:   filterDates[1].format('YYYY-MM-DD') } : {}),
       },
     }).then(r => r.data),
+    getNextPageParam: (lastPage) =>
+      lastPage.current_page < lastPage.last_page ? lastPage.current_page + 1 : undefined,
   });
+
+  const bookingsList = bookingPages?.pages.flatMap(p => p.data) ?? [];
+  const bookingsTotal = bookingPages?.pages?.[0]?.total;
+  const data = { data: bookingsList, total: bookingsTotal };
+
+  useEffect(() => {
+    const el = tableBodyRef.current?.querySelector('.ant-table-body');
+    if (!el) return;
+    const onScroll = () => {
+      if (isFetchingNextPage || !hasNextPage) return;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) {
+        fetchNextPage();
+      }
+    };
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [isFetchingNextPage, hasNextPage, fetchNextPage, bookingsList.length]);
 
   useEffect(() => {
     if (!highlightId || !data?.data) return;
@@ -783,26 +811,29 @@ export default function Bookings() {
               </Row>
               {!isLoading && data?.total != null && (
                 <div style={{ marginBottom: 8, color: '#595959', fontSize: 13 }}>
-                  <strong>{data.total}</strong> booking{data.total !== 1 ? 's' : ''} found
+                  Showing <strong>{bookingsList.length}</strong> of <strong>{data.total}</strong> booking{data.total !== 1 ? 's' : ''}
+                  {isFetchingNextPage && <Spin size="small" style={{ marginLeft: 8 }} />}
                 </div>
               )}
-              <Table
-                dataSource={data?.data}
-                columns={columns}
-                rowKey="id"
-                loading={isLoading}
-                pagination={{ total: data?.total, pageSize: 20 }}
-                scroll={{ x: 800 }}
-                size="small"
-                onRow={r => ({
-                  onClick: () => setActionRow(r),
-                  style: {
-                    cursor: 'pointer',
-                    ...(r.is_owner ? { backgroundColor: '#e6f4ff' } : {}),
-                    ...(r.id === highlightId ? { backgroundColor: '#fffbe6', transition: 'background-color 0.3s' } : {}),
-                  },
-                })}
-              />
+              <div ref={tableBodyRef}>
+                <Table
+                  dataSource={bookingsList}
+                  columns={columns}
+                  rowKey="id"
+                  loading={isLoading}
+                  pagination={false}
+                  scroll={{ x: 800, y: 520 }}
+                  size="small"
+                  onRow={r => ({
+                    onClick: () => setActionRow(r),
+                    style: {
+                      cursor: 'pointer',
+                      ...(r.is_owner ? { backgroundColor: '#e6f4ff' } : {}),
+                      ...(r.id === highlightId ? { backgroundColor: '#fffbe6', transition: 'background-color 0.3s' } : {}),
+                    },
+                  })}
+                />
+              </div>
             </Card>
           ),
         },
